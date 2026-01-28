@@ -14,7 +14,12 @@ pub fn send_system_notification(
         builder = builder.sound("default");
     }
 
-    builder.show().map_err(|e| e.to_string())
+    let result = builder.show().map_err(|e| e.to_string());
+    match &result {
+        Ok(_) => println!("通知发送成功: {} - {}", title, body),
+        Err(e) => println!("通知发送失败: {}", e),
+    }
+    result
 }
 
 /// 发送CLI等待通知

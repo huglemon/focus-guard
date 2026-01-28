@@ -1,14 +1,14 @@
 use std::process::Command;
 
 /// 将终端应用置于最前
-/// 支持常见的终端应用：Terminal、iTerm2、Warp、Alacritty、kitty
+/// 支持常见的终端应用：Warp、iTerm2、Terminal、Alacritty、kitty
 pub fn bring_terminal_to_front() -> Result<(), String> {
     // 使用 AppleScript 激活终端应用
     // 按优先级尝试激活不同的终端
     let terminals = [
+        "Warp",       // Warp (优先)
         "iTerm",      // iTerm2
         "Terminal",   // macOS Terminal
-        "Warp",       // Warp
         "Alacritty",  // Alacritty
         "kitty",      // kitty
     ];
@@ -34,7 +34,9 @@ pub fn bring_terminal_to_front() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
 
         let result = String::from_utf8_lossy(&output.stdout);
+        println!("尝试激活 {}: {}", terminal, result.trim());
         if result.trim() == "activated" {
+            println!("成功激活终端: {}", terminal);
             return Ok(());
         }
     }
@@ -62,10 +64,13 @@ pub fn bring_terminal_to_front() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
 
         let result = String::from_utf8_lossy(&output.stdout);
+        println!("尝试激活 {}: {}", ide, result.trim());
         if result.trim() == "activated" {
+            println!("成功激活 IDE: {}", ide);
             return Ok(());
         }
     }
 
+    println!("未找到任何终端或 IDE");
     Err("No terminal or IDE found".to_string())
 }

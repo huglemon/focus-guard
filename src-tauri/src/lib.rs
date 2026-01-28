@@ -201,13 +201,30 @@ pub fn run() {
 
                             // 如果开启，请求通知权限并发送测试通知
                             if new_enabled {
-                                let _ = notification::request_notification_permission(app);
-                                let _ = notification::send_system_notification(
-                                    app,
-                                    "Focus Guard",
-                                    "声音通知已开启",
-                                    true,
-                                );
+                                // 先请求权限
+                                match notification::request_notification_permission(app) {
+                                    Ok(granted) => {
+                                        println!("通知权限状态: {}", if granted { "已授权" } else { "未授权" });
+                                        if granted {
+                                            let _ = notification::send_system_notification(
+                                                app,
+                                                "Focus Guard",
+                                                "声音通知已开启",
+                                                true,
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        println!("请求通知权限失败: {}", e);
+                                        // 即使请求失败也尝试发送通知（可能会触发系统权限弹窗）
+                                        let _ = notification::send_system_notification(
+                                            app,
+                                            "Focus Guard",
+                                            "声音通知已开启",
+                                            true,
+                                        );
+                                    }
+                                }
                             }
 
                             if let Some(tray) = app.tray_by_id("main") {
