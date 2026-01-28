@@ -1,3 +1,4 @@
+use crate::i18n::Language;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri_plugin_store::StoreExt;
@@ -9,6 +10,7 @@ const KEY_SOUND_ENABLED: &str = "sound_enabled";
 const KEY_AUTO_BRING_TO_FRONT: &str = "auto_bring_to_front";
 const KEY_SITTING_REMINDER_ENABLED: &str = "sitting_reminder_enabled";
 const KEY_SITTING_REMINDER_INTERVAL: &str = "sitting_reminder_interval_minutes";
+const KEY_LANGUAGE: &str = "language";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -18,6 +20,7 @@ pub struct AppConfig {
     pub auto_bring_to_front: bool,    // CLI等待时自动置顶终端
     pub sitting_reminder_enabled: bool,       // 是否启用智能久坐提醒
     pub sitting_reminder_interval_minutes: u32, // 提醒间隔（分钟）
+    pub language: Language,           // 界面语言
 }
 
 impl Default for AppConfig {
@@ -29,6 +32,7 @@ impl Default for AppConfig {
             auto_bring_to_front: false,    // 默认关闭，需要辅助功能权限
             sitting_reminder_enabled: true, // 默认开启
             sitting_reminder_interval_minutes: 40, // 默认40分钟
+            language: Language::default(), // 默认英文
         }
     }
 }
@@ -78,6 +82,14 @@ impl ConfigManager {
                     config.sitting_reminder_interval_minutes = v.max(1) as u32;
                 }
             }
+            if let Some(value) = store.get(KEY_LANGUAGE) {
+                if let Some(v) = value.as_str() {
+                    config.language = match v {
+                        "Chinese" => Language::Chinese,
+                        _ => Language::English,
+                    };
+                }
+            }
         }
     }
 
@@ -93,6 +105,11 @@ impl ConfigManager {
                 KEY_SITTING_REMINDER_INTERVAL,
                 config.sitting_reminder_interval_minutes,
             );
+            let lang_str = match config.language {
+                Language::English => "English",
+                Language::Chinese => "Chinese",
+            };
+            let _ = store.set(KEY_LANGUAGE, lang_str);
             let _ = store.save();
         }
     }
@@ -167,6 +184,16 @@ impl ConfigManager {
             _ => 20,
         };
         config.sitting_reminder_interval_minutes
+    }
+
+    pub fn get_language(&self) -> Language {
+        self.config.lock().unwrap().language
+    }
+
+    pub fn toggle_language(&self) -> Language {
+        let mut config = self.config.lock().unwrap();
+        config.language = config.language.toggle();
+        config.language
     }
 }
 

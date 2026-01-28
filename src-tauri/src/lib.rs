@@ -1,5 +1,6 @@
 mod activity_monitor;
 mod config;
+mod i18n;
 mod ipc_server;
 mod notification;
 mod process_monitor;
@@ -8,6 +9,7 @@ mod window_manager;
 
 use activity_monitor::ActivityMonitor;
 use config::ConfigManager;
+use i18n::{format_interval, format_sitting_time, get_strings};
 use process_monitor::ProcessInfo;
 use state_manager::{CliState, CliStatus, StateChangeEvent, StateManager};
 use std::collections::HashMap;
@@ -244,28 +246,19 @@ pub fn run() {
 
                             // 如果开启，请求通知权限并发送测试通知
                             if new_enabled {
+                                let lang = state_clone.config.get_language();
                                 // 先请求权限
                                 match notification::request_notification_permission(app) {
                                     Ok(granted) => {
-                                        println!("通知权限状态: {}", if granted { "已授权" } else { "未授权" });
+                                        println!("Notification permission: {}", if granted { "granted" } else { "denied" });
                                         if granted {
-                                            let _ = notification::send_system_notification(
-                                                app,
-                                                "Focus Guard",
-                                                "声音通知已开启",
-                                                true,
-                                            );
+                                            let _ = notification::notify_sound_enabled(app, lang);
                                         }
                                     }
                                     Err(e) => {
-                                        println!("请求通知权限失败: {}", e);
+                                        println!("Request notification permission failed: {}", e);
                                         // 即使请求失败也尝试发送通知（可能会触发系统权限弹窗）
-                                        let _ = notification::send_system_notification(
-                                            app,
-                                            "Focus Guard",
-                                            "声音通知已开启",
-                                            true,
-                                        );
+                                        let _ = notification::notify_sound_enabled(app, lang);
                                     }
                                 }
                             }
@@ -368,6 +361,29 @@ pub fn run() {
                                 )));
                             }
                         }
+                        "toggle_lang" => {
+                            let _new_lang = state_clone.config.toggle_language();
+                            state_clone.config.save(app);
+
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    &state_clone.config,
+                                )));
+                            }
+                        }
                         "quit" => {
                             // 清理 IPC socket
                             ipc_server::cleanup();
@@ -400,7 +416,8 @@ pub fn run() {
                 {
                     // 只有开启声音通知时才发送通知
                     if state_for_manager.config.get_sound_enabled() {
-                        let _ = notification::notify_cli_waiting(&handle_state, true);
+                        let lang = state_for_manager.config.get_language();
+                        let _ = notification::notify_cli_waiting(&handle_state, lang, true);
                     }
 
                     // 智能置顶：使用 PID 和 CWD 激活正确的应用和窗口
@@ -423,8 +440,10 @@ pub fn run() {
                         if minutes >= threshold {
                             // 发送久坐提醒
                             let sound_enabled = state_for_manager.config.get_sound_enabled();
+                            let lang = state_for_manager.config.get_language();
                             let _ = notification::notify_smart_sitting_reminder(
                                 &handle_state,
+                                lang,
                                 minutes,
                                 sound_enabled,
                             );
@@ -628,6 +647,8 @@ fn build_menu<R: tauri::Runtime>(
     config: &ConfigManager,
 ) -> Menu<R> {
     let menu = Menu::new(app).unwrap();
+    let lang = config.get_language();
+    let s = get_strings(lang);
 
     // 显示各个 CLI 的状态
     let active_clis: Vec<&CliStatus> = cli_states
@@ -637,7 +658,7 @@ fn build_menu<R: tauri::Runtime>(
 
     if active_clis.is_empty() {
         // 无 CLI 运行
-        let status = MenuItem::new(app, "无CLI运行", false, None::<&str>).unwrap();
+        let status = MenuItem::new(app, s.no_cli_running, false, None::<&str>).unwrap();
         let _ = menu.append(&status);
     } else {
         // 显示每个 CLI 的状态
@@ -667,11 +688,7 @@ fn build_menu<R: tauri::Runtime>(
     let _ = menu.append(&separator1);
 
     // 久坐时间
-    let time_str = if minutes >= 60 {
-        format!("已坐 {}小时{}分钟", minutes / 60, minutes % 60)
-    } else {
-        format!("已坐 {}分钟", minutes)
-    };
+    let time_str = format_sitting_time(lang, minutes);
     let time_item = MenuItem::new(app, time_str, false, None::<&str>).unwrap();
     let _ = menu.append(&time_item);
 
@@ -684,7 +701,7 @@ fn build_menu<R: tauri::Runtime>(
     let toggle_time = CheckMenuItem::with_id(
         app,
         "toggle_time",
-        "显示时间",
+        s.show_time,
         true,
         show_time,
         None::<&str>,
@@ -696,7 +713,7 @@ fn build_menu<R: tauri::Runtime>(
     let toggle_sound = CheckMenuItem::with_id(
         app,
         "toggle_sound",
-        "声音通知",
+        s.sound_notification,
         true,
         sound_enabled,
         None::<&str>,
@@ -708,7 +725,7 @@ fn build_menu<R: tauri::Runtime>(
     let toggle_front = CheckMenuItem::with_id(
         app,
         "toggle_front",
-        "自动置顶终端",
+        s.auto_bring_to_front,
         true,
         auto_front,
         None::<&str>,
@@ -720,7 +737,7 @@ fn build_menu<R: tauri::Runtime>(
     let toggle_sitting_reminder = CheckMenuItem::with_id(
         app,
         "toggle_sitting_reminder",
-        "智能久坐提醒",
+        s.smart_sitting_reminder,
         true,
         sitting_reminder_enabled,
         None::<&str>,
@@ -729,7 +746,7 @@ fn build_menu<R: tauri::Runtime>(
     let _ = menu.append(&toggle_sitting_reminder);
 
     let interval = config.get_sitting_reminder_interval();
-    let interval_label = format!("提醒间隔: {}分钟", interval);
+    let interval_label = format_interval(lang, interval);
     let cycle_interval = MenuItem::with_id(
         app,
         "cycle_interval",
@@ -744,12 +761,16 @@ fn build_menu<R: tauri::Runtime>(
     let separator3 = PredefinedMenuItem::separator(app).unwrap();
     let _ = menu.append(&separator3);
 
+    // 语言切换
+    let toggle_lang = MenuItem::with_id(app, "toggle_lang", s.language, true, None::<&str>).unwrap();
+    let _ = menu.append(&toggle_lang);
+
     // 重置计时
-    let reset = MenuItem::with_id(app, "reset", "重置计时", true, None::<&str>).unwrap();
+    let reset = MenuItem::with_id(app, "reset", s.reset_timer, true, None::<&str>).unwrap();
     let _ = menu.append(&reset);
 
     // 退出
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>).unwrap();
+    let quit = MenuItem::with_id(app, "quit", s.quit, true, None::<&str>).unwrap();
     let _ = menu.append(&quit);
 
     menu
