@@ -38,7 +38,6 @@ pub fn notify_sitting_reminder(
 }
 
 /// 请求通知权限
-#[allow(dead_code)]
 pub fn request_notification_permission(app: &tauri::AppHandle) -> Result<bool, String> {
     app.notification()
         .request_permission()

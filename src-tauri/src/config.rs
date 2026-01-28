@@ -21,8 +21,8 @@ impl Default for AppConfig {
         Self {
             show_time_in_tray: true,
             poll_interval_secs: 5,
-            sound_enabled: true,
-            auto_bring_to_front: true,
+            sound_enabled: false,          // 默认关闭，需要用户授权
+            auto_bring_to_front: false,    // 默认关闭，需要辅助功能权限
         }
     }
 }

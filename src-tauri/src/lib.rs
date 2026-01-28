@@ -196,8 +196,20 @@ pub fn run() {
                             }
                         }
                         "toggle_sound" => {
-                            state_clone.config.toggle_sound();
+                            let new_enabled = state_clone.config.toggle_sound();
                             state_clone.config.save(app);
+
+                            // 如果开启，请求通知权限并发送测试通知
+                            if new_enabled {
+                                let _ = notification::request_notification_permission(app);
+                                let _ = notification::send_system_notification(
+                                    app,
+                                    "Focus Guard",
+                                    "声音通知已开启",
+                                    true,
+                                );
+                            }
+
                             if let Some(tray) = app.tray_by_id("main") {
                                 let minutes = *state_clone.sitting_minutes.lock().unwrap();
                                 let current_state = *state_clone.tray_state.lock().unwrap();
@@ -218,8 +230,14 @@ pub fn run() {
                             }
                         }
                         "toggle_front" => {
-                            state_clone.config.toggle_auto_bring_to_front();
+                            let new_enabled = state_clone.config.toggle_auto_bring_to_front();
                             state_clone.config.save(app);
+
+                            // 如果开启，测试置顶功能
+                            if new_enabled {
+                                let _ = window_manager::bring_terminal_to_front();
+                            }
+
                             if let Some(tray) = app.tray_by_id("main") {
                                 let minutes = *state_clone.sitting_minutes.lock().unwrap();
                                 let current_state = *state_clone.tray_state.lock().unwrap();
@@ -264,8 +282,10 @@ pub fn run() {
 
                     // 状态变化时发送通知和置顶（从非红变红时）
                     if new_tray_state == TrayState::Red && old_state != TrayState::Red {
-                        let sound_enabled = state_for_manager.config.get_sound_enabled();
-                        let _ = notification::notify_cli_waiting(&handle_state, sound_enabled);
+                        // 只有开启声音通知时才发送通知
+                        if state_for_manager.config.get_sound_enabled() {
+                            let _ = notification::notify_cli_waiting(&handle_state, true);
+                        }
 
                         // 自动置顶终端
                         if state_for_manager.config.get_auto_bring_to_front() {
