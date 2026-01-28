@@ -12,7 +12,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use tauri::{
     image::Image,
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, IconMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
 
@@ -405,15 +405,22 @@ fn build_menu<R: tauri::Runtime>(
     } else {
         // 显示每个 CLI 的状态
         for cli_status in &active_clis {
-            let state_indicator = match cli_status.state {
-                CliState::Working => "●",      // 绿点
-                CliState::WaitingInput => "○", // 红点（空心）
-                CliState::Idle => "◌",         // 灰点
+            let icon_data = match cli_status.state {
+                CliState::Working => ICON_GREEN,
+                CliState::WaitingInput => ICON_RED,
+                CliState::Idle => ICON_GRAY,
                 CliState::Offline => continue,
             };
+            let icon = Image::from_bytes(icon_data).ok();
 
-            let cli_title = format!("{} {}", state_indicator, cli_status.display_name);
-            let cli_item = MenuItem::new(app, &cli_title, false, None::<&str>).unwrap();
+            let cli_item = IconMenuItem::new(
+                app,
+                &cli_status.display_name,
+                false,
+                icon,
+                None::<&str>,
+            )
+            .unwrap();
             let _ = menu.append(&cli_item);
         }
     }
