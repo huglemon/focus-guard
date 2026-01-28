@@ -33,6 +33,7 @@ pub fn notify_cli_waiting(app: &tauri::AppHandle, with_sound: bool) -> Result<()
 }
 
 /// 发送久坐提醒
+#[allow(dead_code)]
 pub fn notify_sitting_reminder(
     app: &tauri::AppHandle,
     minutes: u32,
@@ -40,6 +41,19 @@ pub fn notify_sitting_reminder(
 ) -> Result<(), String> {
     let body = format!("你已经坐了{}分钟了，起来活动一下吧！", minutes);
     send_system_notification(app, "久坐提醒", &body, with_sound)
+}
+
+/// 发送智能久坐提醒（CLI交互时触发）
+pub fn notify_smart_sitting_reminder(
+    app: &tauri::AppHandle,
+    minutes: u32,
+    with_sound: bool,
+) -> Result<(), String> {
+    let body = format!(
+        "你已经连续工作{}分钟了！\n休息2分钟后自动重置计时",
+        minutes
+    );
+    send_system_notification(app, "该休息了", &body, with_sound)
 }
 
 /// 请求通知权限

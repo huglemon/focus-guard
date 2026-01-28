@@ -7,6 +7,8 @@ const KEY_SHOW_TIME: &str = "show_time_in_tray";
 const KEY_POLL_INTERVAL: &str = "poll_interval_secs";
 const KEY_SOUND_ENABLED: &str = "sound_enabled";
 const KEY_AUTO_BRING_TO_FRONT: &str = "auto_bring_to_front";
+const KEY_SITTING_REMINDER_ENABLED: &str = "sitting_reminder_enabled";
+const KEY_SITTING_REMINDER_INTERVAL: &str = "sitting_reminder_interval_minutes";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -14,6 +16,8 @@ pub struct AppConfig {
     pub poll_interval_secs: u64,      // 监听间隔时间（秒）
     pub sound_enabled: bool,          // 是否启用声音通知
     pub auto_bring_to_front: bool,    // CLI等待时自动置顶终端
+    pub sitting_reminder_enabled: bool,       // 是否启用智能久坐提醒
+    pub sitting_reminder_interval_minutes: u32, // 提醒间隔（分钟）
 }
 
 impl Default for AppConfig {
@@ -23,6 +27,8 @@ impl Default for AppConfig {
             poll_interval_secs: 5,
             sound_enabled: false,          // 默认关闭，需要用户授权
             auto_bring_to_front: false,    // 默认关闭，需要辅助功能权限
+            sitting_reminder_enabled: true, // 默认开启
+            sitting_reminder_interval_minutes: 40, // 默认40分钟
         }
     }
 }
@@ -62,6 +68,16 @@ impl ConfigManager {
                     config.auto_bring_to_front = v;
                 }
             }
+            if let Some(value) = store.get(KEY_SITTING_REMINDER_ENABLED) {
+                if let Some(v) = value.as_bool() {
+                    config.sitting_reminder_enabled = v;
+                }
+            }
+            if let Some(value) = store.get(KEY_SITTING_REMINDER_INTERVAL) {
+                if let Some(v) = value.as_u64() {
+                    config.sitting_reminder_interval_minutes = v.max(1) as u32;
+                }
+            }
         }
     }
 
@@ -72,6 +88,11 @@ impl ConfigManager {
             let _ = store.set(KEY_POLL_INTERVAL, config.poll_interval_secs);
             let _ = store.set(KEY_SOUND_ENABLED, config.sound_enabled);
             let _ = store.set(KEY_AUTO_BRING_TO_FRONT, config.auto_bring_to_front);
+            let _ = store.set(KEY_SITTING_REMINDER_ENABLED, config.sitting_reminder_enabled);
+            let _ = store.set(
+                KEY_SITTING_REMINDER_INTERVAL,
+                config.sitting_reminder_interval_minutes,
+            );
             let _ = store.save();
         }
     }
@@ -119,6 +140,33 @@ impl ConfigManager {
         let mut config = self.config.lock().unwrap();
         config.auto_bring_to_front = !config.auto_bring_to_front;
         config.auto_bring_to_front
+    }
+
+    pub fn get_sitting_reminder_enabled(&self) -> bool {
+        self.config.lock().unwrap().sitting_reminder_enabled
+    }
+
+    pub fn toggle_sitting_reminder(&self) -> bool {
+        let mut config = self.config.lock().unwrap();
+        config.sitting_reminder_enabled = !config.sitting_reminder_enabled;
+        config.sitting_reminder_enabled
+    }
+
+    pub fn get_sitting_reminder_interval(&self) -> u32 {
+        self.config.lock().unwrap().sitting_reminder_interval_minutes
+    }
+
+    /// 循环切换提醒间隔：20 -> 30 -> 40 -> 50 -> 60 -> 20
+    pub fn cycle_sitting_reminder_interval(&self) -> u32 {
+        let mut config = self.config.lock().unwrap();
+        config.sitting_reminder_interval_minutes = match config.sitting_reminder_interval_minutes {
+            20 => 30,
+            30 => 40,
+            40 => 50,
+            50 => 60,
+            _ => 20,
+        };
+        config.sitting_reminder_interval_minutes
     }
 }
 

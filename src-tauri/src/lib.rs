@@ -1,3 +1,4 @@
+mod activity_monitor;
 mod config;
 mod ipc_server;
 mod notification;
@@ -5,12 +6,14 @@ mod process_monitor;
 mod state_manager;
 mod window_manager;
 
+use activity_monitor::ActivityMonitor;
 use config::ConfigManager;
 use process_monitor::ProcessInfo;
 use state_manager::{CliState, CliStatus, StateChangeEvent, StateManager};
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tauri::{
     image::Image,
     menu::{CheckMenuItem, IconMenuItem, Menu, MenuItem, PredefinedMenuItem},
@@ -40,12 +43,29 @@ impl From<CliState> for TrayState {
     }
 }
 
+/// 智能久坐提醒状态
+struct SittingReminderState {
+    awaiting_standup: bool,              // 是否等待用户站起来
+    reminder_sent_at: Option<Instant>,   // 发送提醒的时间
+}
+
+impl Default for SittingReminderState {
+    fn default() -> Self {
+        Self {
+            awaiting_standup: false,
+            reminder_sent_at: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     sitting_minutes: Arc<Mutex<u32>>,
     tray_state: Arc<Mutex<TrayState>>,
     config: Arc<ConfigManager>,
     cli_states: Arc<Mutex<HashMap<String, CliStatus>>>,
+    activity_monitor: Arc<ActivityMonitor>,
+    sitting_reminder: Arc<Mutex<SittingReminderState>>,
 }
 
 fn get_tray_icon(state: TrayState) -> Image<'static> {
@@ -85,11 +105,16 @@ pub fn run() {
     let state_manager = StateManager::new();
     let cli_states = state_manager.get_states();
 
+    // 创建活动监听器
+    let activity_monitor = Arc::new(ActivityMonitor::new());
+
     let state = AppState {
         sitting_minutes: Arc::new(Mutex::new(0)),
         tray_state: Arc::new(Mutex::new(TrayState::Gray)),
         config: Arc::new(ConfigManager::new()),
         cli_states: cli_states.clone(),
+        activity_monitor: activity_monitor.clone(),
+        sitting_reminder: Arc::new(Mutex::new(SittingReminderState::default())),
     };
 
     // 创建 IPC 通道
@@ -292,6 +317,57 @@ pub fn run() {
                                 )));
                             }
                         }
+                        "toggle_sitting_reminder" => {
+                            let new_enabled = state_clone.config.toggle_sitting_reminder();
+                            state_clone.config.save(app);
+
+                            // 如果开启，启动活动监听器
+                            if new_enabled {
+                                state_clone.activity_monitor.start();
+                            }
+
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    &state_clone.config,
+                                )));
+                            }
+                        }
+                        "cycle_interval" => {
+                            let _new_interval = state_clone.config.cycle_sitting_reminder_interval();
+                            state_clone.config.save(app);
+
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    &state_clone.config,
+                                )));
+                            }
+                        }
                         "quit" => {
                             // 清理 IPC socket
                             ipc_server::cleanup();
@@ -333,6 +409,30 @@ pub fn run() {
                             event.pid,
                             event.cwd.as_deref(),
                         );
+                    }
+                }
+
+                // 智能久坐提醒：在 CLI Working 事件时检查是否需要提醒
+                if event.state == CliState::Working
+                    && state_for_manager.config.get_sitting_reminder_enabled()
+                {
+                    let mut reminder = state_for_manager.sitting_reminder.lock().unwrap();
+                    if !reminder.awaiting_standup {
+                        let minutes = *state_for_manager.sitting_minutes.lock().unwrap();
+                        let threshold = state_for_manager.config.get_sitting_reminder_interval();
+                        if minutes >= threshold {
+                            // 发送久坐提醒
+                            let sound_enabled = state_for_manager.config.get_sound_enabled();
+                            let _ = notification::notify_smart_sitting_reminder(
+                                &handle_state,
+                                minutes,
+                                sound_enabled,
+                            );
+                            reminder.awaiting_standup = true;
+                            reminder.reminder_sent_at = Some(Instant::now());
+                            // 重置活动监听器的时间戳
+                            state_for_manager.activity_monitor.reset_activity();
+                        }
                     }
                 }
 
@@ -450,20 +550,44 @@ pub fn run() {
             let state_sit = state.clone();
 
             std::thread::spawn(move || {
+                // 如果启用了智能久坐提醒，启动活动监听器
+                if state_sit.config.get_sitting_reminder_enabled() {
+                    state_sit.activity_monitor.start();
+                }
+
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(60));
+
+                    // 检查智能久坐提醒状态
+                    {
+                        let mut reminder = state_sit.sitting_reminder.lock().unwrap();
+                        if reminder.awaiting_standup {
+                            if let Some(sent_at) = reminder.reminder_sent_at {
+                                // 检查是否已过2分钟
+                                if sent_at.elapsed().as_secs() >= 120 {
+                                    // 检查用户是否在这2分钟内无活动
+                                    if state_sit.activity_monitor.is_inactive_for(120) {
+                                        // 用户站起来了，重置计时
+                                        let mut m = state_sit.sitting_minutes.lock().unwrap();
+                                        *m = 0;
+                                        println!("用户已休息，重置久坐计时");
+                                    } else {
+                                        // 用户仍在活动，继续计时
+                                        println!("用户仍在活动，继续计时");
+                                    }
+                                    // 清除等待状态
+                                    reminder.awaiting_standup = false;
+                                    reminder.reminder_sent_at = None;
+                                }
+                            }
+                        }
+                    }
 
                     let minutes = {
                         let mut m = state_sit.sitting_minutes.lock().unwrap();
                         *m += 1;
                         *m
                     };
-
-                    // 每30分钟提醒久坐
-                    if minutes > 0 && minutes % 30 == 0 {
-                        let sound_enabled = state_sit.config.get_sound_enabled();
-                        let _ = notification::notify_sitting_reminder(&handle_sit, minutes, sound_enabled);
-                    }
 
                     // 更新标题和菜单
                     if let Some(tray) = handle_sit.tray_by_id("main") {
@@ -591,6 +715,30 @@ fn build_menu<R: tauri::Runtime>(
     )
     .unwrap();
     let _ = menu.append(&toggle_front);
+
+    let sitting_reminder_enabled = config.get_sitting_reminder_enabled();
+    let toggle_sitting_reminder = CheckMenuItem::with_id(
+        app,
+        "toggle_sitting_reminder",
+        "智能久坐提醒",
+        true,
+        sitting_reminder_enabled,
+        None::<&str>,
+    )
+    .unwrap();
+    let _ = menu.append(&toggle_sitting_reminder);
+
+    let interval = config.get_sitting_reminder_interval();
+    let interval_label = format!("提醒间隔: {}分钟", interval);
+    let cycle_interval = MenuItem::with_id(
+        app,
+        "cycle_interval",
+        interval_label,
+        sitting_reminder_enabled, // 只有开启久坐提醒时才可点击
+        None::<&str>,
+    )
+    .unwrap();
+    let _ = menu.append(&cycle_interval);
 
     // 分隔线
     let separator3 = PredefinedMenuItem::separator(app).unwrap();
