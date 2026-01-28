@@ -114,10 +114,28 @@ pub fn run() {
             // 加载配置
             state.config.load(&handle);
 
-            // 初始检测CLI状态
+            // 初始检测CLI状态，并添加到状态列表
             let initial_processes = process_monitor::get_cli_processes();
             let initial_tray_state = determine_tray_state_from_processes(&initial_processes);
             *state.tray_state.lock().unwrap() = initial_tray_state;
+
+            // 把检测到的进程添加到 cli_states
+            {
+                let mut cli_states = state.cli_states.lock().unwrap();
+                for process in &initial_processes {
+                    let key = process.name.to_lowercase();
+                    let status = CliStatus::with_details(
+                        process.name.clone(),
+                        None, // 没有 session_id
+                        process.cwd.clone(),
+                    );
+                    // 设置为 Working 状态（因为进程正在运行）
+                    let mut status = status;
+                    status.state = CliState::Working;
+                    status.pid = Some(process.pid);
+                    cli_states.insert(key, status);
+                }
+            }
 
             let show_time = state.config.get_show_time();
             let cli_states_snapshot: Vec<CliStatus> =
@@ -293,45 +311,49 @@ pub fn run() {
                 let mut current = state_for_manager.tray_state.lock().unwrap();
                 let old_state = *current;
 
+                // 更新托盘状态
                 if new_tray_state != old_state {
                     *current = new_tray_state;
-                    drop(current);
+                }
+                drop(current);
 
-                    // 状态变化时发送通知和置顶（从非红变红时）
-                    if new_tray_state == TrayState::Red && old_state != TrayState::Red {
-                        // 只有开启声音通知时才发送通知
-                        if state_for_manager.config.get_sound_enabled() {
-                            let _ = notification::notify_cli_waiting(&handle_state, true);
-                        }
-
-                        // 智能置顶：使用 PID 和 CWD 激活正确的应用和窗口
-                        if state_for_manager.config.get_auto_bring_to_front() {
-                            let _ = window_manager::bring_cli_to_front(
-                                event.pid,
-                                event.cwd.as_deref(),
-                            );
-                        }
+                // 只有聚合状态变化时才发送通知和置顶（从非红变红时）
+                if event.state_changed
+                    && new_tray_state == TrayState::Red
+                    && old_state != TrayState::Red
+                {
+                    // 只有开启声音通知时才发送通知
+                    if state_for_manager.config.get_sound_enabled() {
+                        let _ = notification::notify_cli_waiting(&handle_state, true);
                     }
 
-                    // 更新图标和菜单
-                    if let Some(tray) = handle_state.tray_by_id("main") {
-                        let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
-                        let minutes = *state_for_manager.sitting_minutes.lock().unwrap();
-                        let cli_states_snapshot: Vec<CliStatus> = state_for_manager
-                            .cli_states
-                            .lock()
-                            .unwrap()
-                            .values()
-                            .cloned()
-                            .collect();
-                        let _ = tray.set_menu(Some(build_menu(
-                            &handle_state,
-                            minutes,
-                            new_tray_state,
-                            &cli_states_snapshot,
-                            &state_for_manager.config,
-                        )));
+                    // 智能置顶：使用 PID 和 CWD 激活正确的应用和窗口
+                    if state_for_manager.config.get_auto_bring_to_front() {
+                        let _ = window_manager::bring_cli_to_front(
+                            event.pid,
+                            event.cwd.as_deref(),
+                        );
                     }
+                }
+
+                // 每次收到事件都更新图标和菜单（确保 CLI 列表实时更新）
+                if let Some(tray) = handle_state.tray_by_id("main") {
+                    let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
+                    let minutes = *state_for_manager.sitting_minutes.lock().unwrap();
+                    let cli_states_snapshot: Vec<CliStatus> = state_for_manager
+                        .cli_states
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .cloned()
+                        .collect();
+                    let _ = tray.set_menu(Some(build_menu(
+                        &handle_state,
+                        minutes,
+                        new_tray_state,
+                        &cli_states_snapshot,
+                        &state_for_manager.config,
+                    )));
                 }
             });
 

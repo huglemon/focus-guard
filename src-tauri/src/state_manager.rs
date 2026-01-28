@@ -100,6 +100,7 @@ pub struct StateChangeEvent {
     pub pid: Option<u32>,
     pub cwd: Option<String>,
     pub cli_name: String,
+    pub state_changed: bool, // 聚合状态是否变化（用于判断是否需要通知）
 }
 
 /// 状态管理器
@@ -181,17 +182,20 @@ impl StateManager {
 
                         // 计算聚合状态
                         let aggregate_state = Self::calculate_aggregate_state(&states);
+                        let state_changed = aggregate_state != last_aggregate_state;
 
-                        // 只有状态变化时才通知，并传递触发变化的 CLI 信息
-                        if aggregate_state != last_aggregate_state {
+                        if state_changed {
                             last_aggregate_state = aggregate_state;
-                            on_state_change(StateChangeEvent {
-                                state: aggregate_state,
-                                pid: current_pid,
-                                cwd: current_cwd,
-                                cli_name: current_cli,
-                            });
                         }
+
+                        // 每次收到事件都通知（用于更新菜单），但标记是否需要通知/置顶
+                        on_state_change(StateChangeEvent {
+                            state: aggregate_state,
+                            pid: current_pid,
+                            cwd: current_cwd,
+                            cli_name: current_cli,
+                            state_changed,
+                        });
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                         // 超时检查：将长时间 WaitingInput 的状态转为 Idle
@@ -214,6 +218,7 @@ impl StateManager {
                                 pid: None,
                                 cwd: None,
                                 cli_name: String::new(),
+                                state_changed: true,
                             });
                         }
                     }
