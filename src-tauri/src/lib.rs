@@ -5,11 +5,12 @@ mod ipc_server;
 mod notification;
 mod process_monitor;
 mod state_manager;
+mod updater;
 mod window_manager;
 
 use activity_monitor::ActivityMonitor;
 use config::ConfigManager;
-use i18n::{format_interval, format_sitting_time, get_strings};
+use i18n::{format_interval, format_sitting_time, format_update_available, format_version, get_strings};
 use process_monitor::ProcessInfo;
 use state_manager::{CliState, CliStatus, StateChangeEvent, StateManager};
 use std::collections::HashMap;
@@ -132,6 +133,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![get_cli_processes])
         .setup(move |app| {
@@ -383,6 +385,31 @@ pub fn run() {
                                     &state_clone.config,
                                 )));
                             }
+                        }
+                        "check_update" => {
+                            let app_handle = app.clone();
+                            let state_for_update = state_clone.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let lang = state_for_update.config.get_language();
+                                let s = get_strings(lang);
+
+                                match updater::check_for_update(&app_handle).await {
+                                    Ok(Some(version)) => {
+                                        // 有新版本，发送通知
+                                        let msg = format_update_available(lang, &version);
+                                        let _ = notification::send_system_notification(&app_handle, s.app_name, &msg, false);
+                                    }
+                                    Ok(None) => {
+                                        // 已是最新版本
+                                        let _ = notification::send_system_notification(&app_handle, s.app_name, s.no_update, false);
+                                    }
+                                    Err(e) => {
+                                        // 检查失败
+                                        println!("Update check error: {}", e);
+                                        let _ = notification::send_system_notification(&app_handle, s.app_name, s.update_error, false);
+                                    }
+                                }
+                            });
                         }
                         "quit" => {
                             // 清理 IPC socket
@@ -764,6 +791,20 @@ fn build_menu<R: tauri::Runtime>(
     // 语言切换
     let toggle_lang = MenuItem::with_id(app, "toggle_lang", s.language, true, None::<&str>).unwrap();
     let _ = menu.append(&toggle_lang);
+
+    // 分隔线
+    let separator4 = PredefinedMenuItem::separator(app).unwrap();
+    let _ = menu.append(&separator4);
+
+    // 版本信息
+    let version = app.package_info().version.to_string();
+    let version_label = format_version(lang, &version);
+    let version_item = MenuItem::new(app, version_label, false, None::<&str>).unwrap();
+    let _ = menu.append(&version_item);
+
+    // 检查更新
+    let check_update = MenuItem::with_id(app, "check_update", s.check_update, true, None::<&str>).unwrap();
+    let _ = menu.append(&check_update);
 
     // 重置计时
     let reset = MenuItem::with_id(app, "reset", s.reset_timer, true, None::<&str>).unwrap();

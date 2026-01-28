@@ -35,6 +35,16 @@ pub struct Strings {
     pub quit: &'static str,
     pub language: &'static str,
 
+    // Update related
+    pub check_update: &'static str,
+    pub version: &'static str,  // "版本: {}" / "Version: {}"
+    pub checking_update: &'static str,
+    pub update_available: &'static str,  // "发现新版本: {}" / "New version: {}"
+    pub no_update: &'static str,
+    pub update_error: &'static str,
+    pub downloading: &'static str,
+    pub install_restart: &'static str,
+
     // Notifications
     pub app_name: &'static str,
     pub cli_waiting: &'static str,
@@ -59,6 +69,16 @@ const ENGLISH: Strings = Strings {
     quit: "Quit",
     language: "中文",
 
+    // Update related
+    check_update: "Check for Updates",
+    version: "Version: {}",
+    checking_update: "Checking...",
+    update_available: "New version: {}",
+    no_update: "Already up to date",
+    update_error: "Update check failed",
+    downloading: "Downloading...",
+    install_restart: "Install & Restart",
+
     // Notifications
     app_name: "Focus Guard",
     cli_waiting: "CLI is waiting for your input!",
@@ -82,6 +102,16 @@ const CHINESE: Strings = Strings {
     reset_timer: "重置计时",
     quit: "退出",
     language: "English",
+
+    // Update related
+    check_update: "检查更新",
+    version: "版本: {}",
+    checking_update: "检查中...",
+    update_available: "发现新版本: {}",
+    no_update: "已是最新版本",
+    update_error: "检查更新失败",
+    downloading: "下载中...",
+    install_restart: "安装并重启",
 
     // Notifications
     app_name: "Focus Guard",
@@ -125,4 +155,14 @@ pub fn format_sitting_reminder(lang: Language, minutes: u32) -> String {
 /// Format smart reminder body
 pub fn format_smart_reminder(lang: Language, minutes: u32) -> String {
     get_strings(lang).smart_reminder_body.replace("{}", &minutes.to_string())
+}
+
+/// Format version string
+pub fn format_version(lang: Language, version: &str) -> String {
+    get_strings(lang).version.replace("{}", version)
+}
+
+/// Format update available string
+pub fn format_update_available(lang: Language, version: &str) -> String {
+    get_strings(lang).update_available.replace("{}", version)
 }

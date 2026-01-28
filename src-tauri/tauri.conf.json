@@ -29,5 +29,13 @@
     "macOS": {
       "minimumSystemVersion": "10.15"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/huglemon/focus-guard/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
