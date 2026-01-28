@@ -8,42 +8,29 @@ pub struct ProcessInfo {
     pub status: String,
 }
 
-/// 获取正在运行的CLI进程（Claude Code、Gemini CLI、Codex CLI、终端等）
+/// 获取正在运行的 AI CLI 进程（Claude Code、Gemini CLI、Codex CLI）
 /// 作为 hooks 系统的兜底检测
 pub fn get_cli_processes() -> Vec<ProcessInfo> {
     let mut sys = System::new_all();
     sys.refresh_all();
 
-    // 我们关心的CLI/IDE进程 - 使用精确匹配
-    // (进程名, 是否精确匹配)
-    let cli_patterns: &[(&str, bool)] = &[
-        ("claude", true),    // Claude Code CLI - 精确匹配
-        ("gemini", true),    // Gemini CLI - 精确匹配
-        ("codex", true),     // Codex CLI - 精确匹配
-        ("Cursor", true),    // Cursor IDE - 精确匹配（注意大小写）
-        ("Code", true),      // VS Code - 精确匹配（注意大小写）
-        ("Terminal", true),  // macOS Terminal - 精确匹配
-        ("iTerm2", true),    // iTerm2 - 精确匹配
-        ("Warp", true),      // Warp terminal - 精确匹配
-        ("Alacritty", true), // Alacritty - 精确匹配
-        ("kitty", true),     // Kitty terminal - 精确匹配
+    // 只检测 AI CLI 工具，不检测终端应用
+    let cli_patterns: &[&str] = &[
+        "claude", // Claude Code CLI
+        "gemini", // Gemini CLI
+        "codex",  // Codex CLI
     ];
 
     let mut processes = Vec::new();
 
     for (pid, process) in sys.processes() {
         let name = process.name().to_string_lossy().to_string();
+        let name_lower = name.to_lowercase();
 
-        // 检查是否是我们关心的CLI进程
-        let is_cli = cli_patterns.iter().any(|(pattern, exact)| {
-            if *exact {
-                // 精确匹配：进程名必须完全等于 pattern
-                name == *pattern || name.to_lowercase() == pattern.to_lowercase()
-            } else {
-                // 模糊匹配（目前未使用）
-                name.to_lowercase().contains(&pattern.to_lowercase())
-            }
-        });
+        // 精确匹配 AI CLI 工具
+        let is_cli = cli_patterns
+            .iter()
+            .any(|pattern| name_lower == *pattern);
 
         if is_cli {
             // 简化状态：只区分运行中和其他
@@ -62,7 +49,7 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
 
     // 去重并只保留主要进程
     processes.sort_by(|a, b| a.name.cmp(&b.name));
-    processes.dedup_by(|a, b| a.name == b.name);
+    processes.dedup_by(|a, b| a.name.to_lowercase() == b.name.to_lowercase());
 
     processes
 }
