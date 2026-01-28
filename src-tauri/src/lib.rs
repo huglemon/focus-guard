@@ -161,45 +161,85 @@ pub fn run() {
             });
 
             // 兜底进程检测线程
-            let handle_bg = handle.clone();
-            let state_bg = state.clone();
+            // 对于没有配置 hooks 的 CLI（如 Codex），通过进程检测来补充状态
+            let _handle_bg = handle.clone();
+            let _state_bg = state.clone();
             let cli_states_bg = cli_states.clone();
+            let ipc_sender_bg = ipc_sender.clone();
 
             std::thread::spawn(move || {
-                let mut last_tray_state = initial_tray_state;
+                // 已知配置了 hooks 的 CLI
+                let hooked_clis = ["claude", "gemini"];
 
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(10)); // 每10秒检查一次
 
-                    // 检查是否有通过 hooks 报告的状态
-                    let has_hook_states = !cli_states_bg.lock().unwrap().is_empty();
+                    // 获取所有 CLI 进程
+                    let processes = process_monitor::get_cli_processes();
 
-                    // 如果没有 hooks 状态，使用进程检测作为兜底
-                    if !has_hook_states {
-                        let processes = process_monitor::get_cli_processes();
-                        let new_tray_state = determine_tray_state_from_processes(&processes);
+                    // 检查哪些 CLI 没有通过 hooks 报告状态
+                    let hook_states = cli_states_bg.lock().unwrap();
 
-                        // 更新状态
-                        {
-                            let mut ts = state_bg.tray_state.lock().unwrap();
-                            *ts = new_tray_state;
-                        }
+                    for process in &processes {
+                        let cli_name = process.name.to_lowercase();
 
-                        // 状态变化时发送通知（从非红变红时）
-                        if new_tray_state == TrayState::Red && last_tray_state != TrayState::Red {
-                            let _ = notification::notify_cli_waiting(&handle_bg);
-                        }
+                        // 检查是否是没有配置 hooks 的 CLI
+                        let is_hooked = hooked_clis.iter().any(|&h| cli_name.contains(h));
 
-                        // 更新图标（状态变化时）
-                        if new_tray_state != last_tray_state {
-                            if let Some(tray) = handle_bg.tray_by_id("main") {
-                                let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
-                                let minutes = *state_bg.sitting_minutes.lock().unwrap();
-                                let _ = tray.set_menu(Some(build_menu(&handle_bg, minutes, new_tray_state)));
+                        if !is_hooked {
+                            // 对于没有 hooks 的 CLI（如 codex），检查是否已有状态
+                            let has_state = hook_states.keys().any(|k| cli_name.contains(k));
+
+                            if !has_state {
+                                // 通过 IPC 通道模拟一个 Working 事件
+                                let msg = ipc_server::CliMessage {
+                                    cli: cli_name.clone(),
+                                    event: ipc_server::CliEvent::Working,
+                                    pid: Some(process.pid),
+                                    timestamp: None,
+                                };
+                                let _ = ipc_sender_bg.send(msg);
+                                println!("Fallback detection: {} (PID: {})", cli_name, process.pid);
                             }
                         }
+                    }
 
-                        last_tray_state = new_tray_state;
+                    drop(hook_states);
+
+                    // 检查已记录但进程已退出的 CLI
+                    let hook_states = cli_states_bg.lock().unwrap();
+                    let active_process_names: Vec<String> = processes
+                        .iter()
+                        .map(|p| p.name.to_lowercase())
+                        .collect();
+
+                    // 找出需要标记为 Offline 的 CLI
+                    let offline_clis: Vec<String> = hook_states
+                        .keys()
+                        .filter(|cli| {
+                            // 如果是没有 hooks 的 CLI，检查进程是否还在运行
+                            let is_hooked = hooked_clis.iter().any(|&h| cli.contains(h));
+                            if !is_hooked {
+                                !active_process_names.iter().any(|p| p.contains(cli.as_str()))
+                            } else {
+                                false
+                            }
+                        })
+                        .cloned()
+                        .collect();
+
+                    drop(hook_states);
+
+                    // 发送 SessionEnd 事件
+                    for cli in offline_clis {
+                        let msg = ipc_server::CliMessage {
+                            cli: cli.clone(),
+                            event: ipc_server::CliEvent::SessionEnd,
+                            pid: None,
+                            timestamp: None,
+                        };
+                        let _ = ipc_sender_bg.send(msg);
+                        println!("Fallback detection: {} exited", cli);
                     }
                 }
             });
