@@ -17,16 +17,16 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
     // 我们关心的CLI/IDE进程 - 使用精确匹配
     // (进程名, 是否精确匹配)
     let cli_patterns: &[(&str, bool)] = &[
-        ("claude", true),      // Claude Code CLI - 精确匹配
-        ("gemini", true),      // Gemini CLI - 精确匹配
-        ("codex", true),       // Codex CLI - 精确匹配
-        ("Cursor", true),      // Cursor IDE - 精确匹配（注意大小写）
-        ("Code", true),        // VS Code - 精确匹配（注意大小写）
-        ("Terminal", true),    // macOS Terminal - 精确匹配
-        ("iTerm2", true),      // iTerm2 - 精确匹配
-        ("Warp", true),        // Warp terminal - 精确匹配
-        ("Alacritty", true),   // Alacritty - 精确匹配
-        ("kitty", true),       // Kitty terminal - 精确匹配
+        ("claude", true),    // Claude Code CLI - 精确匹配
+        ("gemini", true),    // Gemini CLI - 精确匹配
+        ("codex", true),     // Codex CLI - 精确匹配
+        ("Cursor", true),    // Cursor IDE - 精确匹配（注意大小写）
+        ("Code", true),      // VS Code - 精确匹配（注意大小写）
+        ("Terminal", true),  // macOS Terminal - 精确匹配
+        ("iTerm2", true),    // iTerm2 - 精确匹配
+        ("Warp", true),      // Warp terminal - 精确匹配
+        ("Alacritty", true), // Alacritty - 精确匹配
+        ("kitty", true),     // Kitty terminal - 精确匹配
     ];
 
     let mut processes = Vec::new();

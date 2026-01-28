@@ -12,21 +12,25 @@ pub const SOCKET_PATH: &str = "/tmp/focus-guard.sock";
 pub enum CliEvent {
     SessionStart,
     SessionEnd,
-    Working,      // PreToolUse, BeforeAgent, BeforeTool
-    Stop,         // Claude Stop, AfterAgent
-    IdlePrompt,   // Claude idle_prompt notification
+    Working,    // PreToolUse, BeforeAgent, BeforeTool
+    Stop,       // Claude Stop, AfterAgent
+    IdlePrompt, // Claude idle_prompt notification
     PermissionPrompt,
 }
 
 /// 从 CLI hooks 接收的消息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliMessage {
-    pub cli: String,      // "claude", "gemini", "codex"
+    pub cli: String, // "claude", "gemini", "codex"
     pub event: CliEvent,
     #[serde(default)]
     pub pid: Option<u32>,
     #[serde(default)]
     pub timestamp: Option<u64>,
+    #[serde(default)]
+    pub session_id: Option<String>, // 会话 ID，用于区分多实例
+    #[serde(default)]
+    pub cwd: Option<String>, // 工作目录
 }
 
 /// 启动 Unix Socket 服务器

@@ -33,6 +33,7 @@ setup_claude_hooks() {
     mkdir -p "$CLAUDE_DIR"
 
     # 生成 hooks 配置
+    # 使用 bash -c 来传递 stdin JSON，包含 session_id 和 cwd
     HOOKS_CONFIG=$(cat <<EOF
 {
   "hooks": {
@@ -41,7 +42,7 @@ setup_claude_hooks() {
         "hooks": [
           {
             "type": "command",
-            "command": "$NOTIFY_SCRIPT claude session_start"
+            "command": "echo '{\"session_id\":\"'\$CLAUDE_SESSION_ID'\",\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT claude session_start"
           }
         ]
       }
@@ -51,7 +52,7 @@ setup_claude_hooks() {
         "hooks": [
           {
             "type": "command",
-            "command": "$NOTIFY_SCRIPT claude session_end"
+            "command": "echo '{\"session_id\":\"'\$CLAUDE_SESSION_ID'\",\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT claude session_end"
           }
         ]
       }
@@ -61,7 +62,7 @@ setup_claude_hooks() {
         "hooks": [
           {
             "type": "command",
-            "command": "$NOTIFY_SCRIPT claude stop"
+            "command": "echo '{\"session_id\":\"'\$CLAUDE_SESSION_ID'\",\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT claude stop"
           }
         ]
       }
@@ -72,7 +73,7 @@ setup_claude_hooks() {
         "hooks": [
           {
             "type": "command",
-            "command": "$NOTIFY_SCRIPT claude working"
+            "command": "echo '{\"session_id\":\"'\$CLAUDE_SESSION_ID'\",\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT claude working"
           }
         ]
       }
@@ -83,7 +84,7 @@ setup_claude_hooks() {
         "hooks": [
           {
             "type": "command",
-            "command": "$NOTIFY_SCRIPT claude idle_prompt"
+            "command": "echo '{\"session_id\":\"'\$CLAUDE_SESSION_ID'\",\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT claude idle_prompt"
           }
         ]
       },
@@ -92,7 +93,7 @@ setup_claude_hooks() {
         "hooks": [
           {
             "type": "command",
-            "command": "$NOTIFY_SCRIPT claude permission_prompt"
+            "command": "echo '{\"session_id\":\"'\$CLAUDE_SESSION_ID'\",\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT claude permission_prompt"
           }
         ]
       }
@@ -139,32 +140,32 @@ setup_gemini_hooks() {
   "hooks": {
     "SessionStart": [
       {
-        "command": "$NOTIFY_SCRIPT gemini session_start"
+        "command": "echo '{\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT gemini session_start"
       }
     ],
     "SessionEnd": [
       {
-        "command": "$NOTIFY_SCRIPT gemini session_end"
+        "command": "echo '{\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT gemini session_end"
       }
     ],
     "BeforeAgent": [
       {
-        "command": "$NOTIFY_SCRIPT gemini working"
+        "command": "echo '{\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT gemini working"
       }
     ],
     "AfterAgent": [
       {
-        "command": "$NOTIFY_SCRIPT gemini stop"
+        "command": "echo '{\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT gemini stop"
       }
     ],
     "BeforeTool": [
       {
-        "command": "$NOTIFY_SCRIPT gemini working"
+        "command": "echo '{\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT gemini working"
       }
     ],
     "AfterTool": [
       {
-        "command": "$NOTIFY_SCRIPT gemini stop"
+        "command": "echo '{\"cwd\":\"'\$PWD'\"}' | $NOTIFY_SCRIPT gemini stop"
       }
     ]
   }
@@ -229,4 +230,4 @@ echo ""
 echo "请重启相应的 CLI 工具以使配置生效。"
 echo ""
 echo "测试方法:"
-echo "  echo '{\"cli\":\"claude\",\"event\":\"stop\"}' | nc -U /tmp/focus-guard.sock"
+echo "  echo '{\"cli\":\"claude\",\"event\":\"stop\",\"session_id\":\"test\",\"cwd\":\"/tmp\"}' | nc -U /tmp/focus-guard.sock"

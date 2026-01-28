@@ -1,15 +1,18 @@
+mod config;
 mod ipc_server;
 mod notification;
 mod process_monitor;
 mod state_manager;
 
+use config::ConfigManager;
 use process_monitor::ProcessInfo;
-use state_manager::{CliState, StateManager};
+use state_manager::{CliState, CliStatus, StateManager};
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
 
@@ -20,9 +23,9 @@ const ICON_RED: &[u8] = include_bytes!("../icons/tray_red.png");
 
 #[derive(Clone, Copy, PartialEq)]
 enum TrayState {
-    Gray,   // 无CLI运行
-    Green,  // CLI运行中，用户交互中
-    Red,    // CLI等待用户输入
+    Gray,  // 无CLI运行
+    Green, // CLI运行中，用户交互中
+    Red,   // CLI等待用户输入
 }
 
 impl From<CliState> for TrayState {
@@ -30,7 +33,7 @@ impl From<CliState> for TrayState {
         match state {
             CliState::Working => TrayState::Green,
             CliState::WaitingInput => TrayState::Red,
-            CliState::Idle => TrayState::Red,  // Idle 也显示红色提醒用户
+            CliState::Idle => TrayState::Red, // Idle 也显示红色提醒用户
             CliState::Offline => TrayState::Gray,
         }
     }
@@ -40,6 +43,8 @@ impl From<CliState> for TrayState {
 struct AppState {
     sitting_minutes: Arc<Mutex<u32>>,
     tray_state: Arc<Mutex<TrayState>>,
+    config: Arc<ConfigManager>,
+    cli_states: Arc<Mutex<HashMap<String, CliStatus>>>,
 }
 
 fn get_tray_icon(state: TrayState) -> Image<'static> {
@@ -62,7 +67,7 @@ fn format_title(minutes: u32) -> String {
 /// 根据CLI进程状态判断托盘状态（兜底检测）
 fn determine_tray_state_from_processes(processes: &[ProcessInfo]) -> TrayState {
     if processes.is_empty() {
-        TrayState::Gray  // 无CLI运行
+        TrayState::Gray // 无CLI运行
     } else {
         TrayState::Green // 有CLI运行
     }
@@ -75,9 +80,15 @@ fn get_cli_processes() -> Vec<ProcessInfo> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 创建状态管理器并获取共享状态
+    let state_manager = StateManager::new();
+    let cli_states = state_manager.get_states();
+
     let state = AppState {
         sitting_minutes: Arc::new(Mutex::new(0)),
         tray_state: Arc::new(Mutex::new(TrayState::Gray)),
+        config: Arc::new(ConfigManager::new()),
+        cli_states: cli_states.clone(),
     };
 
     // 创建 IPC 通道
@@ -92,22 +103,41 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![get_cli_processes])
         .setup(move |app| {
             let handle = app.handle().clone();
             let state_clone = state.clone();
 
+            // 加载配置
+            state.config.load(&handle);
+
             // 初始检测CLI状态
             let initial_processes = process_monitor::get_cli_processes();
             let initial_tray_state = determine_tray_state_from_processes(&initial_processes);
             *state.tray_state.lock().unwrap() = initial_tray_state;
 
-            let menu = build_menu(&handle, 0, initial_tray_state);
+            let show_time = state.config.get_show_time();
+            let cli_states_snapshot: Vec<CliStatus> =
+                state.cli_states.lock().unwrap().values().cloned().collect();
+            let menu = build_menu(
+                &handle,
+                0,
+                initial_tray_state,
+                &cli_states_snapshot,
+                show_time,
+            );
+
+            let initial_title = if show_time {
+                Some("0m".to_string())
+            } else {
+                None
+            };
 
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(get_tray_icon(initial_tray_state))
-                .title("0m")
+                .title(initial_title.as_deref().unwrap_or(""))
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(move |app, event| {
@@ -117,8 +147,51 @@ pub fn run() {
                             *minutes = 0;
                             if let Some(tray) = app.tray_by_id("main") {
                                 let current_state = *state_clone.tray_state.lock().unwrap();
-                                let _ = tray.set_title(Some("0m"));
-                                let _ = tray.set_menu(Some(build_menu(app, 0, current_state)));
+                                let show_time = state_clone.config.get_show_time();
+                                if show_time {
+                                    let _ = tray.set_title(Some("0m"));
+                                }
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    0,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    show_time,
+                                )));
+                            }
+                        }
+                        "toggle_time" => {
+                            let new_show_time = state_clone.config.toggle_show_time();
+                            state_clone.config.save(app);
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                if new_show_time {
+                                    let _ = tray.set_title(Some(&format_title(minutes)));
+                                } else {
+                                    let _ = tray.set_title(Some(""));
+                                }
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    new_show_time,
+                                )));
                             }
                         }
                         "quit" => {
@@ -134,8 +207,6 @@ pub fn run() {
             // 启动状态管理器
             let handle_state = handle.clone();
             let state_for_manager = state.clone();
-            let state_manager = StateManager::new();
-            let cli_states = state_manager.get_states();
 
             state_manager.start(ipc_receiver, move |cli_state| {
                 let new_tray_state: TrayState = cli_state.into();
@@ -151,11 +222,25 @@ pub fn run() {
                         let _ = notification::notify_cli_waiting(&handle_state);
                     }
 
-                    // 更新图标
+                    // 更新图标和菜单
                     if let Some(tray) = handle_state.tray_by_id("main") {
                         let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
                         let minutes = *state_for_manager.sitting_minutes.lock().unwrap();
-                        let _ = tray.set_menu(Some(build_menu(&handle_state, minutes, new_tray_state)));
+                        let show_time = state_for_manager.config.get_show_time();
+                        let cli_states_snapshot: Vec<CliStatus> = state_for_manager
+                            .cli_states
+                            .lock()
+                            .unwrap()
+                            .values()
+                            .cloned()
+                            .collect();
+                        let _ = tray.set_menu(Some(build_menu(
+                            &handle_state,
+                            minutes,
+                            new_tray_state,
+                            &cli_states_snapshot,
+                            show_time,
+                        )));
                     }
                 }
             });
@@ -197,6 +282,8 @@ pub fn run() {
                                     event: ipc_server::CliEvent::Working,
                                     pid: Some(process.pid),
                                     timestamp: None,
+                                    session_id: None,
+                                    cwd: None,
                                 };
                                 let _ = ipc_sender_bg.send(msg);
                                 println!("Fallback detection: {} (PID: {})", cli_name, process.pid);
@@ -208,10 +295,8 @@ pub fn run() {
 
                     // 检查已记录但进程已退出的 CLI
                     let hook_states = cli_states_bg.lock().unwrap();
-                    let active_process_names: Vec<String> = processes
-                        .iter()
-                        .map(|p| p.name.to_lowercase())
-                        .collect();
+                    let active_process_names: Vec<String> =
+                        processes.iter().map(|p| p.name.to_lowercase()).collect();
 
                     // 找出需要标记为 Offline 的 CLI
                     let offline_clis: Vec<String> = hook_states
@@ -220,7 +305,9 @@ pub fn run() {
                             // 如果是没有 hooks 的 CLI，检查进程是否还在运行
                             let is_hooked = hooked_clis.iter().any(|&h| cli.contains(h));
                             if !is_hooked {
-                                !active_process_names.iter().any(|p| p.contains(cli.as_str()))
+                                !active_process_names
+                                    .iter()
+                                    .any(|p| p.contains(cli.as_str()))
                             } else {
                                 false
                             }
@@ -237,6 +324,8 @@ pub fn run() {
                             event: ipc_server::CliEvent::SessionEnd,
                             pid: None,
                             timestamp: None,
+                            session_id: None,
+                            cwd: None,
                         };
                         let _ = ipc_sender_bg.send(msg);
                         println!("Fallback detection: {} exited", cli);
@@ -263,11 +352,27 @@ pub fn run() {
                         let _ = notification::notify_sitting_reminder(&handle_sit, minutes);
                     }
 
-                    // 更新标题
+                    // 更新标题和菜单
                     if let Some(tray) = handle_sit.tray_by_id("main") {
-                        let _ = tray.set_title(Some(&format_title(minutes)));
+                        let show_time = state_sit.config.get_show_time();
+                        if show_time {
+                            let _ = tray.set_title(Some(&format_title(minutes)));
+                        }
                         let current_state = *state_sit.tray_state.lock().unwrap();
-                        let _ = tray.set_menu(Some(build_menu(&handle_sit, minutes, current_state)));
+                        let cli_states_snapshot: Vec<CliStatus> = state_sit
+                            .cli_states
+                            .lock()
+                            .unwrap()
+                            .values()
+                            .cloned()
+                            .collect();
+                        let _ = tray.set_menu(Some(build_menu(
+                            &handle_sit,
+                            minutes,
+                            current_state,
+                            &cli_states_snapshot,
+                            show_time,
+                        )));
                     }
                 }
             });
@@ -278,16 +383,44 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, minutes: u32, tray_state: TrayState) -> Menu<R> {
+fn build_menu<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    minutes: u32,
+    _tray_state: TrayState,
+    cli_states: &[CliStatus],
+    show_time: bool,
+) -> Menu<R> {
     let menu = Menu::new(app).unwrap();
 
-    // 状态说明
-    let status_text = match tray_state {
-        TrayState::Gray => "无CLI运行",
-        TrayState::Green => "CLI运行中",
-        TrayState::Red => "⚠️ CLI等待输入",
-    };
-    let status = MenuItem::new(app, status_text, false, None::<&str>).unwrap();
+    // 显示各个 CLI 的状态
+    let active_clis: Vec<&CliStatus> = cli_states
+        .iter()
+        .filter(|s| s.state != CliState::Offline)
+        .collect();
+
+    if active_clis.is_empty() {
+        // 无 CLI 运行
+        let status = MenuItem::new(app, "无CLI运行", false, None::<&str>).unwrap();
+        let _ = menu.append(&status);
+    } else {
+        // 显示每个 CLI 的状态
+        for cli_status in &active_clis {
+            let state_indicator = match cli_status.state {
+                CliState::Working => "●",      // 绿点
+                CliState::WaitingInput => "○", // 红点（空心）
+                CliState::Idle => "◌",         // 灰点
+                CliState::Offline => continue,
+            };
+
+            let cli_title = format!("{} {}", state_indicator, cli_status.display_name);
+            let cli_item = MenuItem::new(app, &cli_title, false, None::<&str>).unwrap();
+            let _ = menu.append(&cli_item);
+        }
+    }
+
+    // 分隔线
+    let separator1 = PredefinedMenuItem::separator(app).unwrap();
+    let _ = menu.append(&separator1);
 
     // 久坐时间
     let time_str = if minutes >= 60 {
@@ -296,13 +429,30 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, minutes: u32, tray_s
         format!("已坐 {}分钟", minutes)
     };
     let time_item = MenuItem::new(app, time_str, false, None::<&str>).unwrap();
-
-    let reset = MenuItem::with_id(app, "reset", "重置计时", true, None::<&str>).unwrap();
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>).unwrap();
-
-    let _ = menu.append(&status);
     let _ = menu.append(&time_item);
+
+    // 分隔线
+    let separator2 = PredefinedMenuItem::separator(app).unwrap();
+    let _ = menu.append(&separator2);
+
+    // 显示时间开关
+    let toggle_time = CheckMenuItem::with_id(
+        app,
+        "toggle_time",
+        "显示时间",
+        true,
+        show_time,
+        None::<&str>,
+    )
+    .unwrap();
+    let _ = menu.append(&toggle_time);
+
+    // 重置计时
+    let reset = MenuItem::with_id(app, "reset", "重置计时", true, None::<&str>).unwrap();
     let _ = menu.append(&reset);
+
+    // 退出
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>).unwrap();
     let _ = menu.append(&quit);
 
     menu

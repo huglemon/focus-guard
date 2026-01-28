@@ -2,6 +2,10 @@
 
 # Focus Guard - CLI 通知脚本
 # 用于 CLI hooks 调用，向 Focus Guard 发送状态通知
+#
+# 用法:
+#   focus-guard-notify <cli_name> <event>
+#   echo '{"session_id":"xxx","cwd":"/path"}' | focus-guard-notify <cli_name> <event>
 
 SOCKET_PATH="/tmp/focus-guard.sock"
 
@@ -10,6 +14,9 @@ if [ $# -lt 2 ]; then
     echo "Usage: $0 <cli_name> <event>"
     echo "  cli_name: claude, gemini, codex"
     echo "  event: session_start, session_end, working, stop, idle_prompt, permission_prompt"
+    echo ""
+    echo "Optional: pipe JSON with session_id and cwd from stdin"
+    echo "  echo '{\"session_id\":\"xxx\",\"cwd\":\"/path\"}' | $0 claude working"
     exit 1
 fi
 
@@ -18,11 +25,46 @@ EVENT="$2"
 PID="$$"
 TIMESTAMP=$(date +%s)
 
+# 初始化可选字段
+SESSION_ID=""
+CWD=""
+
+# 尝试从 stdin 读取 JSON（非阻塞）
+if [ ! -t 0 ]; then
+    # stdin 有数据
+    STDIN_DATA=$(cat)
+    if [ -n "$STDIN_DATA" ]; then
+        # 尝试解析 JSON
+        if command -v jq &> /dev/null; then
+            SESSION_ID=$(echo "$STDIN_DATA" | jq -r '.session_id // empty' 2>/dev/null)
+            CWD=$(echo "$STDIN_DATA" | jq -r '.cwd // empty' 2>/dev/null)
+        else
+            # 简单的 grep 解析（备用方案）
+            SESSION_ID=$(echo "$STDIN_DATA" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:.*"\([^"]*\)"/\1/')
+            CWD=$(echo "$STDIN_DATA" | grep -o '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*:.*"\([^"]*\)"/\1/')
+        fi
+    fi
+fi
+
 # 构建 JSON 消息
-MESSAGE=$(cat <<EOF
-{"cli":"$CLI_NAME","event":"$EVENT","pid":$PID,"timestamp":$TIMESTAMP}
-EOF
-)
+build_json() {
+    local json="{\"cli\":\"$CLI_NAME\",\"event\":\"$EVENT\",\"pid\":$PID,\"timestamp\":$TIMESTAMP"
+
+    if [ -n "$SESSION_ID" ]; then
+        json="$json,\"session_id\":\"$SESSION_ID\""
+    fi
+
+    if [ -n "$CWD" ]; then
+        # 转义 CWD 中的特殊字符
+        ESCAPED_CWD=$(echo "$CWD" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        json="$json,\"cwd\":\"$ESCAPED_CWD\""
+    fi
+
+    json="$json}"
+    echo "$json"
+}
+
+MESSAGE=$(build_json)
 
 # 检查 socket 是否存在
 if [ ! -S "$SOCKET_PATH" ]; then

@@ -1,6 +1,7 @@
 use crate::ipc_server::{CliEvent, CliMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -8,32 +9,87 @@ use std::time::{Duration, Instant};
 /// CLI 状态
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum CliState {
-    Working,       // AI 正在处理
-    WaitingInput,  // 等待用户输入
-    Idle,          // 空闲
-    Offline,       // 未运行
+    Working,      // AI 正在处理
+    WaitingInput, // 等待用户输入
+    Idle,         // 空闲
+    Offline,      // 未运行
 }
 
 /// 单个 CLI 的状态信息
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CliStatus {
     pub cli_name: String,
     pub state: CliState,
     pub pid: Option<u32>,
     pub last_event: Option<CliEvent>,
     pub last_update: Instant,
+    pub session_id: Option<String>,
+    pub cwd: Option<String>,
+    pub display_name: String, // 如 "Claude - my-project"
 }
 
 impl CliStatus {
+    #[allow(dead_code)]
     pub fn new(cli_name: String) -> Self {
+        let display_name = capitalize_first(&cli_name);
         Self {
             cli_name,
             state: CliState::Offline,
             pid: None,
             last_event: None,
             last_update: Instant::now(),
+            session_id: None,
+            cwd: None,
+            display_name,
         }
+    }
+
+    pub fn with_details(cli_name: String, session_id: Option<String>, cwd: Option<String>) -> Self {
+        let display_name = Self::format_display_name(&cli_name, cwd.as_deref());
+        Self {
+            cli_name,
+            state: CliState::Offline,
+            pid: None,
+            last_event: None,
+            last_update: Instant::now(),
+            session_id,
+            cwd,
+            display_name,
+        }
+    }
+
+    fn format_display_name(cli_name: &str, cwd: Option<&str>) -> String {
+        let cli_display = capitalize_first(cli_name);
+        match cwd {
+            Some(path) => {
+                let project_name = Path::new(path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(path);
+                format!("{} - {}", cli_display, project_name)
+            }
+            None => cli_display,
+        }
+    }
+
+    pub fn update_display_name(&mut self) {
+        self.display_name = Self::format_display_name(&self.cli_name, self.cwd.as_deref());
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+/// 生成状态 key，支持多实例
+fn make_state_key(cli: &str, session_id: Option<&str>) -> String {
+    match session_id {
+        Some(sid) => format!("{}:{}", cli, sid),
+        None => cli.to_string(),
     }
 }
 
@@ -59,7 +115,11 @@ impl StateManager {
     }
 
     /// 启动状态管理循环
-    pub fn start(self, receiver: Receiver<CliMessage>, on_state_change: impl Fn(CliState) + Send + 'static) {
+    pub fn start(
+        self,
+        receiver: Receiver<CliMessage>,
+        on_state_change: impl Fn(CliState) + Send + 'static,
+    ) {
         let states = self.cli_states.clone();
         let timeout = self.waiting_timeout;
 
@@ -69,13 +129,27 @@ impl StateManager {
                 match receiver.recv_timeout(Duration::from_secs(1)) {
                     Ok(msg) => {
                         let mut states_guard = states.lock().unwrap();
-                        let status = states_guard
-                            .entry(msg.cli.clone())
-                            .or_insert_with(|| CliStatus::new(msg.cli.clone()));
+                        let key = make_state_key(&msg.cli, msg.session_id.as_deref());
+                        let status = states_guard.entry(key).or_insert_with(|| {
+                            CliStatus::with_details(
+                                msg.cli.clone(),
+                                msg.session_id.clone(),
+                                msg.cwd.clone(),
+                            )
+                        });
 
                         status.last_event = Some(msg.event.clone());
                         status.last_update = Instant::now();
                         status.pid = msg.pid;
+
+                        // 更新 session_id 和 cwd（如果有新值）
+                        if msg.session_id.is_some() {
+                            status.session_id = msg.session_id.clone();
+                        }
+                        if msg.cwd.is_some() {
+                            status.cwd = msg.cwd.clone();
+                            status.update_display_name();
+                        }
 
                         status.state = match msg.event {
                             CliEvent::SessionStart => CliState::Working,
