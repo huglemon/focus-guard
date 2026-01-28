@@ -3,6 +3,7 @@ mod ipc_server;
 mod notification;
 mod process_monitor;
 mod state_manager;
+mod window_manager;
 
 use config::ConfigManager;
 use process_monitor::ProcessInfo;
@@ -126,7 +127,7 @@ pub fn run() {
                 0,
                 initial_tray_state,
                 &cli_states_snapshot,
-                show_time,
+                &state.config,
             );
 
             let initial_title = if show_time {
@@ -163,7 +164,7 @@ pub fn run() {
                                     0,
                                     current_state,
                                     &cli_states_snapshot,
-                                    show_time,
+                                    &state_clone.config,
                                 )));
                             }
                         }
@@ -190,7 +191,51 @@ pub fn run() {
                                     minutes,
                                     current_state,
                                     &cli_states_snapshot,
-                                    new_show_time,
+                                    &state_clone.config,
+                                )));
+                            }
+                        }
+                        "toggle_sound" => {
+                            state_clone.config.toggle_sound();
+                            state_clone.config.save(app);
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    &state_clone.config,
+                                )));
+                            }
+                        }
+                        "toggle_front" => {
+                            state_clone.config.toggle_auto_bring_to_front();
+                            state_clone.config.save(app);
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    &state_clone.config,
                                 )));
                             }
                         }
@@ -217,16 +262,21 @@ pub fn run() {
                     *current = new_tray_state;
                     drop(current);
 
-                    // 状态变化时发送通知（从非红变红时）
+                    // 状态变化时发送通知和置顶（从非红变红时）
                     if new_tray_state == TrayState::Red && old_state != TrayState::Red {
-                        let _ = notification::notify_cli_waiting(&handle_state);
+                        let sound_enabled = state_for_manager.config.get_sound_enabled();
+                        let _ = notification::notify_cli_waiting(&handle_state, sound_enabled);
+
+                        // 自动置顶终端
+                        if state_for_manager.config.get_auto_bring_to_front() {
+                            let _ = window_manager::bring_terminal_to_front();
+                        }
                     }
 
                     // 更新图标和菜单
                     if let Some(tray) = handle_state.tray_by_id("main") {
                         let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
                         let minutes = *state_for_manager.sitting_minutes.lock().unwrap();
-                        let show_time = state_for_manager.config.get_show_time();
                         let cli_states_snapshot: Vec<CliStatus> = state_for_manager
                             .cli_states
                             .lock()
@@ -239,7 +289,7 @@ pub fn run() {
                             minutes,
                             new_tray_state,
                             &cli_states_snapshot,
-                            show_time,
+                            &state_for_manager.config,
                         )));
                     }
                 }
@@ -349,7 +399,8 @@ pub fn run() {
 
                     // 每30分钟提醒久坐
                     if minutes > 0 && minutes % 30 == 0 {
-                        let _ = notification::notify_sitting_reminder(&handle_sit, minutes);
+                        let sound_enabled = state_sit.config.get_sound_enabled();
+                        let _ = notification::notify_sitting_reminder(&handle_sit, minutes, sound_enabled);
                     }
 
                     // 更新标题和菜单
@@ -371,7 +422,7 @@ pub fn run() {
                             minutes,
                             current_state,
                             &cli_states_snapshot,
-                            show_time,
+                            &state_sit.config,
                         )));
                     }
                 }
@@ -388,7 +439,7 @@ fn build_menu<R: tauri::Runtime>(
     minutes: u32,
     _tray_state: TrayState,
     cli_states: &[CliStatus],
-    show_time: bool,
+    config: &ConfigManager,
 ) -> Menu<R> {
     let menu = Menu::new(app).unwrap();
 
@@ -442,7 +493,8 @@ fn build_menu<R: tauri::Runtime>(
     let separator2 = PredefinedMenuItem::separator(app).unwrap();
     let _ = menu.append(&separator2);
 
-    // 显示时间开关
+    // 设置选项
+    let show_time = config.get_show_time();
     let toggle_time = CheckMenuItem::with_id(
         app,
         "toggle_time",
@@ -453,6 +505,34 @@ fn build_menu<R: tauri::Runtime>(
     )
     .unwrap();
     let _ = menu.append(&toggle_time);
+
+    let sound_enabled = config.get_sound_enabled();
+    let toggle_sound = CheckMenuItem::with_id(
+        app,
+        "toggle_sound",
+        "声音通知",
+        true,
+        sound_enabled,
+        None::<&str>,
+    )
+    .unwrap();
+    let _ = menu.append(&toggle_sound);
+
+    let auto_front = config.get_auto_bring_to_front();
+    let toggle_front = CheckMenuItem::with_id(
+        app,
+        "toggle_front",
+        "自动置顶终端",
+        true,
+        auto_front,
+        None::<&str>,
+    )
+    .unwrap();
+    let _ = menu.append(&toggle_front);
+
+    // 分隔线
+    let separator3 = PredefinedMenuItem::separator(app).unwrap();
+    let _ = menu.append(&separator3);
 
     // 重置计时
     let reset = MenuItem::with_id(app, "reset", "重置计时", true, None::<&str>).unwrap();
