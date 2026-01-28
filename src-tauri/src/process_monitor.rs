@@ -13,17 +13,16 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
     let mut sys = System::new_all();
     sys.refresh_all();
 
+    // 我们关心的CLI/IDE进程
     let cli_names = [
-        "claude",      // Claude Code
-        "node",        // Node.js (可能是Claude Code)
+        "claude",      // Claude Code CLI
+        "cursor",      // Cursor IDE
+        "code",        // VS Code
         "Terminal",    // macOS Terminal
         "iTerm2",      // iTerm2
         "Warp",        // Warp terminal
         "Alacritty",   // Alacritty
         "kitty",       // Kitty terminal
-        "zsh",         // Zsh shell
-        "bash",        // Bash shell
-        "fish",        // Fish shell
     ];
 
     let mut processes = Vec::new();
@@ -37,12 +36,10 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
         });
 
         if is_cli {
-            // 检查进程状态
+            // 简化状态：只区分运行中和其他
             let status = match process.status() {
                 sysinfo::ProcessStatus::Run => "running",
-                sysinfo::ProcessStatus::Sleep => "waiting", // 可能在等待输入
-                sysinfo::ProcessStatus::Idle => "idle",
-                _ => "unknown",
+                _ => "idle",
             };
 
             processes.push(ProcessInfo {
@@ -60,8 +57,7 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
     processes
 }
 
-/// 检查是否有CLI进程在等待用户输入
-pub fn has_waiting_cli() -> bool {
-    let processes = get_cli_processes();
-    processes.iter().any(|p| p.status == "waiting")
+/// 检查是否有活跃的CLI进程
+pub fn has_active_cli() -> bool {
+    !get_cli_processes().is_empty()
 }
