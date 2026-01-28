@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Focus Guard默认权限",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-request-permission",
+    "shell:default",
+    "shell:allow-execute"
+  ]
+}
