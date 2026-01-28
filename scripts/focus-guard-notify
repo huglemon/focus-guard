@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Focus Guard - CLI 通知脚本
+# 用于 CLI hooks 调用，向 Focus Guard 发送状态通知
+
+SOCKET_PATH="/tmp/focus-guard.sock"
+
+# 参数检查
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <cli_name> <event>"
+    echo "  cli_name: claude, gemini, codex"
+    echo "  event: session_start, session_end, working, stop, idle_prompt, permission_prompt"
+    exit 1
+fi
+
+CLI_NAME="$1"
+EVENT="$2"
+PID="$$"
+TIMESTAMP=$(date +%s)
+
+# 构建 JSON 消息
+MESSAGE=$(cat <<EOF
+{"cli":"$CLI_NAME","event":"$EVENT","pid":$PID,"timestamp":$TIMESTAMP}
+EOF
+)
+
+# 检查 socket 是否存在
+if [ ! -S "$SOCKET_PATH" ]; then
+    # Socket 不存在，Focus Guard 可能未运行，静默退出
+    exit 0
+fi
+
+# 发送消息到 Unix Socket
+echo "$MESSAGE" | nc -U "$SOCKET_PATH" 2>/dev/null
+
+# 静默处理错误，不影响 CLI 工具的正常运行
+exit 0

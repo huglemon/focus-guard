@@ -1,7 +1,11 @@
+mod ipc_server;
 mod notification;
 mod process_monitor;
+mod state_manager;
 
 use process_monitor::ProcessInfo;
+use state_manager::{CliState, StateManager};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use tauri::{
     image::Image,
@@ -19,6 +23,17 @@ enum TrayState {
     Gray,   // 无CLI运行
     Green,  // CLI运行中，用户交互中
     Red,    // CLI等待用户输入
+}
+
+impl From<CliState> for TrayState {
+    fn from(state: CliState) -> Self {
+        match state {
+            CliState::Working => TrayState::Green,
+            CliState::WaitingInput => TrayState::Red,
+            CliState::Idle => TrayState::Red,  // Idle 也显示红色提醒用户
+            CliState::Offline => TrayState::Gray,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -44,18 +59,13 @@ fn format_title(minutes: u32) -> String {
     }
 }
 
-/// 根据CLI进程状态判断托盘状态
-fn determine_tray_state(processes: &[ProcessInfo]) -> TrayState {
+/// 根据CLI进程状态判断托盘状态（兜底检测）
+fn determine_tray_state_from_processes(processes: &[ProcessInfo]) -> TrayState {
     if processes.is_empty() {
         TrayState::Gray  // 无CLI运行
     } else {
         TrayState::Green // 有CLI运行
     }
-    // 注意：红色状态（等待用户输入）需要更复杂的检测机制
-    // 目前通过进程状态无法准确判断，后续可通过以下方式实现：
-    // 1. 监控Claude Code的特定输出/状态文件
-    // 2. 使用终端模拟器的API
-    // 3. 监控stdin/stdout活动
 }
 
 #[tauri::command]
@@ -70,6 +80,15 @@ pub fn run() {
         tray_state: Arc::new(Mutex::new(TrayState::Gray)),
     };
 
+    // 创建 IPC 通道
+    let (ipc_sender, ipc_receiver) = mpsc::channel();
+
+    // 启动 IPC 服务器
+    let ipc_sender_clone = ipc_sender.clone();
+    std::thread::spawn(move || {
+        ipc_server::start_ipc_server(ipc_sender_clone);
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
@@ -81,7 +100,7 @@ pub fn run() {
 
             // 初始检测CLI状态
             let initial_processes = process_monitor::get_cli_processes();
-            let initial_tray_state = determine_tray_state(&initial_processes);
+            let initial_tray_state = determine_tray_state_from_processes(&initial_processes);
             *state.tray_state.lock().unwrap() = initial_tray_state;
 
             let menu = build_menu(&handle, 0, initial_tray_state);
@@ -103,6 +122,8 @@ pub fn run() {
                             }
                         }
                         "quit" => {
+                            // 清理 IPC socket
+                            ipc_server::cleanup();
                             app.exit(0);
                         }
                         _ => {}
@@ -110,40 +131,76 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // 启动状态管理器
+            let handle_state = handle.clone();
+            let state_for_manager = state.clone();
+            let state_manager = StateManager::new();
+            let cli_states = state_manager.get_states();
+
+            state_manager.start(ipc_receiver, move |cli_state| {
+                let new_tray_state: TrayState = cli_state.into();
+                let mut current = state_for_manager.tray_state.lock().unwrap();
+                let old_state = *current;
+
+                if new_tray_state != old_state {
+                    *current = new_tray_state;
+                    drop(current);
+
+                    // 状态变化时发送通知（从非红变红时）
+                    if new_tray_state == TrayState::Red && old_state != TrayState::Red {
+                        let _ = notification::notify_cli_waiting(&handle_state);
+                    }
+
+                    // 更新图标
+                    if let Some(tray) = handle_state.tray_by_id("main") {
+                        let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
+                        let minutes = *state_for_manager.sitting_minutes.lock().unwrap();
+                        let _ = tray.set_menu(Some(build_menu(&handle_state, minutes, new_tray_state)));
+                    }
+                }
+            });
+
+            // 兜底进程检测线程
             let handle_bg = handle.clone();
             let state_bg = state.clone();
+            let cli_states_bg = cli_states.clone();
 
             std::thread::spawn(move || {
                 let mut last_tray_state = initial_tray_state;
 
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(5)); // 每5秒检查一次
+                    std::thread::sleep(std::time::Duration::from_secs(10)); // 每10秒检查一次
 
-                    // 检查CLI状态
-                    let processes = process_monitor::get_cli_processes();
-                    let new_tray_state = determine_tray_state(&processes);
+                    // 检查是否有通过 hooks 报告的状态
+                    let has_hook_states = !cli_states_bg.lock().unwrap().is_empty();
 
-                    // 更新状态
-                    {
-                        let mut ts = state_bg.tray_state.lock().unwrap();
-                        *ts = new_tray_state;
-                    }
+                    // 如果没有 hooks 状态，使用进程检测作为兜底
+                    if !has_hook_states {
+                        let processes = process_monitor::get_cli_processes();
+                        let new_tray_state = determine_tray_state_from_processes(&processes);
 
-                    // 状态变化时发送通知（从非红变红时）
-                    if new_tray_state == TrayState::Red && last_tray_state != TrayState::Red {
-                        let _ = notification::notify_cli_waiting(&handle_bg);
-                    }
-
-                    // 更新图标（状态变化时）
-                    if new_tray_state != last_tray_state {
-                        if let Some(tray) = handle_bg.tray_by_id("main") {
-                            let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
-                            let minutes = *state_bg.sitting_minutes.lock().unwrap();
-                            let _ = tray.set_menu(Some(build_menu(&handle_bg, minutes, new_tray_state)));
+                        // 更新状态
+                        {
+                            let mut ts = state_bg.tray_state.lock().unwrap();
+                            *ts = new_tray_state;
                         }
-                    }
 
-                    last_tray_state = new_tray_state;
+                        // 状态变化时发送通知（从非红变红时）
+                        if new_tray_state == TrayState::Red && last_tray_state != TrayState::Red {
+                            let _ = notification::notify_cli_waiting(&handle_bg);
+                        }
+
+                        // 更新图标（状态变化时）
+                        if new_tray_state != last_tray_state {
+                            if let Some(tray) = handle_bg.tray_by_id("main") {
+                                let _ = tray.set_icon(Some(get_tray_icon(new_tray_state)));
+                                let minutes = *state_bg.sitting_minutes.lock().unwrap();
+                                let _ = tray.set_menu(Some(build_menu(&handle_bg, minutes, new_tray_state)));
+                            }
+                        }
+
+                        last_tray_state = new_tray_state;
+                    }
                 }
             });
 

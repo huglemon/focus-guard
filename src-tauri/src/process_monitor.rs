@@ -8,7 +8,8 @@ pub struct ProcessInfo {
     pub status: String,
 }
 
-/// 获取正在运行的CLI进程（Claude Code、终端等）
+/// 获取正在运行的CLI进程（Claude Code、Gemini CLI、Codex CLI、终端等）
+/// 作为 hooks 系统的兜底检测
 pub fn get_cli_processes() -> Vec<ProcessInfo> {
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -16,6 +17,8 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
     // 我们关心的CLI/IDE进程
     let cli_names = [
         "claude",      // Claude Code CLI
+        "gemini",      // Gemini CLI
+        "codex",       // Codex CLI
         "cursor",      // Cursor IDE
         "code",        // VS Code
         "Terminal",    // macOS Terminal
@@ -55,9 +58,4 @@ pub fn get_cli_processes() -> Vec<ProcessInfo> {
     processes.dedup_by(|a, b| a.name == b.name);
 
     processes
-}
-
-/// 检查是否有活跃的CLI进程
-pub fn has_active_cli() -> bool {
-    !get_cli_processes().is_empty()
 }
