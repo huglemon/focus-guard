@@ -93,6 +93,15 @@ fn make_state_key(cli: &str, session_id: Option<&str>) -> String {
     }
 }
 
+/// 状态变化事件，包含详细信息
+#[derive(Debug, Clone)]
+pub struct StateChangeEvent {
+    pub state: CliState,
+    pub pid: Option<u32>,
+    pub cwd: Option<String>,
+    pub cli_name: String,
+}
+
 /// 状态管理器
 pub struct StateManager {
     /// 各 CLI 的状态
@@ -118,12 +127,14 @@ impl StateManager {
     pub fn start(
         self,
         receiver: Receiver<CliMessage>,
-        on_state_change: impl Fn(CliState) + Send + 'static,
+        on_state_change: impl Fn(StateChangeEvent) + Send + 'static,
     ) {
         let states = self.cli_states.clone();
         let timeout = self.waiting_timeout;
 
         std::thread::spawn(move || {
+            let mut last_aggregate_state = CliState::Offline;
+
             loop {
                 // 非阻塞接收消息，超时 1 秒
                 match receiver.recv_timeout(Duration::from_secs(1)) {
@@ -151,7 +162,7 @@ impl StateManager {
                             status.update_display_name();
                         }
 
-                        status.state = match msg.event {
+                        let new_state = match msg.event {
                             CliEvent::SessionStart => CliState::Working,
                             CliEvent::SessionEnd => CliState::Offline,
                             CliEvent::Working => CliState::Working,
@@ -159,8 +170,28 @@ impl StateManager {
                             CliEvent::IdlePrompt => CliState::Idle,
                             CliEvent::PermissionPrompt => CliState::WaitingInput,
                         };
+                        status.state = new_state;
+
+                        // 保存当前 CLI 的信息用于回调
+                        let current_pid = status.pid;
+                        let current_cwd = status.cwd.clone();
+                        let current_cli = status.cli_name.clone();
 
                         drop(states_guard);
+
+                        // 计算聚合状态
+                        let aggregate_state = Self::calculate_aggregate_state(&states);
+
+                        // 只有状态变化时才通知，并传递触发变化的 CLI 信息
+                        if aggregate_state != last_aggregate_state {
+                            last_aggregate_state = aggregate_state;
+                            on_state_change(StateChangeEvent {
+                                state: aggregate_state,
+                                pid: current_pid,
+                                cwd: current_cwd,
+                                cli_name: current_cli,
+                            });
+                        }
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                         // 超时检查：将长时间 WaitingInput 的状态转为 Idle
@@ -173,16 +204,24 @@ impl StateManager {
                             }
                         }
                         drop(states_guard);
+
+                        // 检查聚合状态是否变化
+                        let aggregate_state = Self::calculate_aggregate_state(&states);
+                        if aggregate_state != last_aggregate_state {
+                            last_aggregate_state = aggregate_state;
+                            on_state_change(StateChangeEvent {
+                                state: aggregate_state,
+                                pid: None,
+                                cwd: None,
+                                cli_name: String::new(),
+                            });
+                        }
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                         eprintln!("State manager channel disconnected");
                         break;
                     }
                 }
-
-                // 计算聚合状态并通知
-                let aggregate_state = Self::calculate_aggregate_state(&states);
-                on_state_change(aggregate_state);
             }
         });
     }

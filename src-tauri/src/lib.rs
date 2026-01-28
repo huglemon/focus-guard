@@ -7,7 +7,7 @@ mod window_manager;
 
 use config::ConfigManager;
 use process_monitor::ProcessInfo;
-use state_manager::{CliState, CliStatus, StateManager};
+use state_manager::{CliState, CliStatus, StateChangeEvent, StateManager};
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -288,8 +288,8 @@ pub fn run() {
             let handle_state = handle.clone();
             let state_for_manager = state.clone();
 
-            state_manager.start(ipc_receiver, move |cli_state| {
-                let new_tray_state: TrayState = cli_state.into();
+            state_manager.start(ipc_receiver, move |event: StateChangeEvent| {
+                let new_tray_state: TrayState = event.state.into();
                 let mut current = state_for_manager.tray_state.lock().unwrap();
                 let old_state = *current;
 
@@ -304,9 +304,12 @@ pub fn run() {
                             let _ = notification::notify_cli_waiting(&handle_state, true);
                         }
 
-                        // 自动置顶终端
+                        // 智能置顶：使用 PID 和 CWD 激活正确的应用和窗口
                         if state_for_manager.config.get_auto_bring_to_front() {
-                            let _ = window_manager::bring_terminal_to_front();
+                            let _ = window_manager::bring_cli_to_front(
+                                event.pid,
+                                event.cwd.as_deref(),
+                            );
                         }
                     }
 
