@@ -613,26 +613,27 @@ pub fn run() {
                         processes.iter().map(|p| p.name.to_lowercase()).collect();
 
                     // 找出需要标记为 Offline 的 CLI
-                    let offline_clis: Vec<String> = hook_states
-                        .keys()
-                        .filter(|cli| {
-                            // 如果是没有 hooks 的 CLI，检查进程是否还在运行
-                            let is_hooked = hooked_clis.iter().any(|&h| cli.contains(h));
-                            if !is_hooked {
-                                !active_process_names
-                                    .iter()
-                                    .any(|p| p.contains(cli.as_str()))
-                            } else {
-                                false
+                    // 对于所有 CLI（包括有 hooks 的），如果进程不存在就标记为 Offline
+                    let offline_clis: Vec<(String, CliState)> = hook_states
+                        .iter()
+                        .filter(|(cli, status)| {
+                            // 只检查非 Offline 状态的 CLI
+                            if status.state == CliState::Offline {
+                                return false;
                             }
+                            // 检查进程是否还在运行
+                            let cli_lower = cli.to_lowercase();
+                            !active_process_names
+                                .iter()
+                                .any(|p| p.contains(&cli_lower) || cli_lower.contains(p))
                         })
-                        .cloned()
+                        .map(|(k, v)| (k.clone(), v.state))
                         .collect();
 
                     drop(hook_states);
 
                     // 发送 SessionEnd 事件
-                    for cli in offline_clis {
+                    for (cli, old_state) in offline_clis {
                         let msg = ipc_server::CliMessage {
                             cli: cli.clone(),
                             event: ipc_server::CliEvent::SessionEnd,
@@ -642,7 +643,10 @@ pub fn run() {
                             cwd: None,
                         };
                         let _ = ipc_sender_bg.send(msg);
-                        println!("Fallback detection: {} exited", cli);
+                        println!(
+                            "Fallback detection: {} exited (was {:?})",
+                            cli, old_state
+                        );
                     }
                 }
             });

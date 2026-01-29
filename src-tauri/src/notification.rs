@@ -22,14 +22,10 @@ pub fn send_system_notification(
     let mut builder = app.notification().builder();
     builder = builder.title(title).body(body);
 
-    // 仍然设置通知声音（某些系统可能支持）
-    if with_sound {
-        builder = builder.sound("default");
-    }
-
+    // 不设置通知声音，避免和 afplay 重复播放
     let result = builder.show().map_err(|e| e.to_string());
 
-    // 额外使用 afplay 播放声音，确保声音能播放
+    // 使用 afplay 播放声音，确保声音能播放
     if with_sound {
         play_system_sound();
     }

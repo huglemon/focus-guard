@@ -1,11 +1,11 @@
 {
-  "version": "0.1.3",
-  "notes": "Focus Guard v0.1.3\n\n修复：\n- 优化 Stop 事件处理，延迟 3 秒后才变红，避免频繁闪烁\n- 修复键鼠监听无效导致久坐计时误重置的问题\n- 添加调试日志便于排查权限问题",
-  "pub_date": "2026-01-29T05:53:00Z",
+  "version": "0.1.4",
+  "notes": "Focus Guard v0.1.4\n\n修复：\n- 修复 CLI 关闭后状态栏仍保持红色的问题\n- 修复通知响两次铃声的问题",
+  "pub_date": "2026-01-29T07:02:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSFBjbXY1Tzk0SVlHUldJaDZuOTZ2MFVjSDY4VUFwckpnYUdwdkFWUXI4a1NOQ2t6MS9qOVJwZ1hMSHN4Z3BYYjlGN2tQWHVrY29QV25LWTN1ejJNVDNoc21zanVyV0EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjY1OTgyCWZpbGU6Rm9jdXMgR3VhcmRfMC4xLjNfYWFyY2g2NC5kbWcKQlkwZU9jNW1QL2dZWlFWU1dwS21JWkdTU3NsaDRjemF1ekQyYytFTzJnOHlneGZEQitDWm9uVzFSOENoRnhBbHp0c1ZrQlFIWG5TZ3VHV1pQUlR4QUE9PQo=",
-      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.3/Focus.Guard_0.1.3_aarch64.dmg"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSFBjbXY1Tzk0SVdYVmlDcm9WUVNNZTJvZmFuaFQ5MllVWnUvODByUnBDdHNmZlk3MjFPL1ZvUGNia1N6bjV2UVFMOFI2STA2blNmRWRITDRuYXpXR3JGbG1RN3NTdUFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjcwMTQ0CWZpbGU6Rm9jdXMgR3VhcmRfMC4xLjRfYWFyY2g2NC5kbWcKYytVQk5DWWI0Z2JmOGxpTGZtWEVoMkVzY3QwNjdWZ0xQMEJyQUFrMlF2TjFCaFBFbmZyUUJCSFRJK05BZUlYSXVMNy9WV0swV1FvY0VaR1ROcUxwQmc9PQo=",
+      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.4/Focus.Guard_0.1.4_aarch64.dmg"
     }
   }
 }
