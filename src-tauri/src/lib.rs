@@ -22,6 +22,7 @@ use tauri::{
     menu::{CheckMenuItem, IconMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
+use tauri_plugin_autostart::ManagerExt;
 
 // 内嵌三种状态的图标
 const ICON_GRAY: &[u8] = include_bytes!("../icons/tray_gray.png");
@@ -134,6 +135,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::AppleScript,
+            Some(vec![]),
+        ))
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![get_cli_processes])
         .setup(move |app| {
@@ -291,6 +296,34 @@ pub fn run() {
                             // 如果开启，测试置顶功能
                             if new_enabled {
                                 let _ = window_manager::bring_terminal_to_front();
+                            }
+
+                            if let Some(tray) = app.tray_by_id("main") {
+                                let minutes = *state_clone.sitting_minutes.lock().unwrap();
+                                let current_state = *state_clone.tray_state.lock().unwrap();
+                                let cli_states_snapshot: Vec<CliStatus> = state_clone
+                                    .cli_states
+                                    .lock()
+                                    .unwrap()
+                                    .values()
+                                    .cloned()
+                                    .collect();
+                                let _ = tray.set_menu(Some(build_menu(
+                                    app,
+                                    minutes,
+                                    current_state,
+                                    &cli_states_snapshot,
+                                    &state_clone.config,
+                                )));
+                            }
+                        }
+                        "toggle_auto_start" => {
+                            let autolaunch = app.autolaunch();
+                            let is_enabled = autolaunch.is_enabled().unwrap_or(false);
+                            if is_enabled {
+                                let _ = autolaunch.disable();
+                            } else {
+                                let _ = autolaunch.enable();
                             }
 
                             if let Some(tray) = app.tray_by_id("main") {
@@ -770,6 +803,19 @@ fn build_menu<R: tauri::Runtime>(
     )
     .unwrap();
     let _ = menu.append(&toggle_front);
+
+    // 开机自动启动
+    let auto_start_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    let toggle_auto_start = CheckMenuItem::with_id(
+        app,
+        "toggle_auto_start",
+        s.auto_start,
+        true,
+        auto_start_enabled,
+        None::<&str>,
+    )
+    .unwrap();
+    let _ = menu.append(&toggle_auto_start);
 
     let sitting_reminder_enabled = config.get_sitting_reminder_enabled();
     let toggle_sitting_reminder = CheckMenuItem::with_id(

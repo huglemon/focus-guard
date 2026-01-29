@@ -29,6 +29,7 @@ pub struct Strings {
     pub show_time: &'static str,
     pub sound_notification: &'static str,
     pub auto_bring_to_front: &'static str,
+    pub auto_start: &'static str,
     pub smart_sitting_reminder: &'static str,
     pub reminder_interval: &'static str,  // "提醒间隔: {}分钟" / "Interval: {}m"
     pub reset_timer: &'static str,
@@ -63,6 +64,7 @@ const ENGLISH: Strings = Strings {
     show_time: "Show Time",
     sound_notification: "Sound Notification",
     auto_bring_to_front: "Auto Bring to Front",
+    auto_start: "Launch at Login",
     smart_sitting_reminder: "Smart Sitting Reminder",
     reminder_interval: "Interval: {}m",
     reset_timer: "Reset Timer",
@@ -97,6 +99,7 @@ const CHINESE: Strings = Strings {
     show_time: "显示时间",
     sound_notification: "声音通知",
     auto_bring_to_front: "自动置顶终端",
+    auto_start: "开机自动启动",
     smart_sitting_reminder: "智能久坐提醒",
     reminder_interval: "提醒间隔: {}分钟",
     reset_timer: "重置计时",
