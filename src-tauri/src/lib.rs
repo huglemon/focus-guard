@@ -80,22 +80,12 @@ fn get_tray_icon(state: TrayState) -> Image<'static> {
     Image::from_bytes(data).expect("Failed to load tray icon")
 }
 
-fn format_title(minutes: u32, activity_monitor: Option<&ActivityMonitor>) -> String {
-    let time_str = if minutes >= 60 {
+fn format_title(minutes: u32, _activity_monitor: Option<&ActivityMonitor>) -> String {
+    if minutes >= 60 {
         format!("{}h{}m", minutes / 60, minutes % 60)
     } else {
         format!("{}m", minutes)
-    };
-
-    // 如果正在监控，显示活动类型
-    if let Some(monitor) = activity_monitor {
-        if monitor.is_monitoring() {
-            let activity = monitor.get_last_activity_type();
-            return format!("{}[{}]", time_str, activity);
-        }
     }
-
-    time_str
 }
 
 /// 根据CLI进程状态判断托盘状态（兜底检测）

@@ -40,6 +40,7 @@ pub fn request_accessibility_permission() {
 }
 
 /// 最近的活动类型
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum LastActivity {
     None,
@@ -151,11 +152,13 @@ impl ActivityMonitor {
     }
 
     /// 是否正在监控
+    #[allow(dead_code)]
     pub fn is_monitoring(&self) -> bool {
         self.is_monitoring.load(Ordering::SeqCst)
     }
 
     /// 获取最近的活动类型
+    #[allow(dead_code)]
     pub fn get_last_activity_type(&self) -> LastActivity {
         self.last_activity_type.lock().unwrap().clone()
     }
