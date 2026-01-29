@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "notes": "Focus Guard v0.1.0 - 首个正式版本\n\n功能特性：\n- CLI 进程监控（Claude Code、Gemini CLI、Codex 等）\n- 智能久坐提醒\n- 声音通知\n- 自动置顶终端窗口\n- 多语言支持（中文/英文）",
+  "pub_date": "2026-01-29T03:43:34Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTL1dXZmxReDUyaVV5SHVJRTZMWTVzdzFTS1RTL05vTTQvbjhEUWltdEpqSUx4N1IrOUdMZFdZRGkvNWFZMW1wbDduaUNtZFVkM045T05OR3QxellFTDFzZVRqT1dCWXdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjU4MjAwCWZpbGU6Rm9jdXMgR3VhcmRfMC4xLjBfYWFyY2g2NC5kbWcKR0pOTkxHbU81MTlVMUluWmk0VnpXUWliRlp6STdyYWJqV2ZtSFkzOGNJNGFKQThkSjZZS1ZuRzZGZDhqc1F6ZUJXUitmQ24ybys2cWhlRnArWUgvQWc9PQo=",
+      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.0/Focus.Guard_0.1.0_aarch64.dmg"
+    }
+  }
+}
