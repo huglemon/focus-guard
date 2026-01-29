@@ -1,5 +1,16 @@
 use crate::i18n::{format_sitting_reminder, format_smart_reminder, get_strings, Language};
+use std::process::Command;
 use tauri_plugin_notification::NotificationExt;
+
+/// 播放系统提示音
+fn play_system_sound() {
+    // 使用 afplay 播放系统声音，这在 macOS 上更可靠
+    std::thread::spawn(|| {
+        let _ = Command::new("afplay")
+            .arg("/System/Library/Sounds/Glass.aiff")
+            .output();
+    });
+}
 
 /// 发送系统通知（带声音选项）
 pub fn send_system_notification(
@@ -11,11 +22,18 @@ pub fn send_system_notification(
     let mut builder = app.notification().builder();
     builder = builder.title(title).body(body);
 
+    // 仍然设置通知声音（某些系统可能支持）
     if with_sound {
         builder = builder.sound("default");
     }
 
     let result = builder.show().map_err(|e| e.to_string());
+
+    // 额外使用 afplay 播放声音，确保声音能播放
+    if with_sound {
+        play_system_sound();
+    }
+
     match &result {
         Ok(_) => println!("Notification sent: {} - {}", title, body),
         Err(e) => println!("Notification failed: {}", e),

@@ -80,12 +80,22 @@ fn get_tray_icon(state: TrayState) -> Image<'static> {
     Image::from_bytes(data).expect("Failed to load tray icon")
 }
 
-fn format_title(minutes: u32) -> String {
-    if minutes >= 60 {
+fn format_title(minutes: u32, activity_monitor: Option<&ActivityMonitor>) -> String {
+    let time_str = if minutes >= 60 {
         format!("{}h{}m", minutes / 60, minutes % 60)
     } else {
         format!("{}m", minutes)
+    };
+
+    // 如果正在监控，显示活动类型
+    if let Some(monitor) = activity_monitor {
+        if monitor.is_monitoring() {
+            let activity = monitor.get_last_activity_type();
+            return format!("{}[{}]", time_str, activity);
+        }
     }
+
+    time_str
 }
 
 /// 根据CLI进程状态判断托盘状态（兜底检测）
@@ -222,7 +232,7 @@ pub fn run() {
                                 let minutes = *state_clone.sitting_minutes.lock().unwrap();
                                 let current_state = *state_clone.tray_state.lock().unwrap();
                                 if new_show_time {
-                                    let _ = tray.set_title(Some(&format_title(minutes)));
+                                    let _ = tray.set_title(Some(&format_title(minutes, Some(&state_clone.activity_monitor))));
                                 } else {
                                     let _ = tray.set_title(Some(""));
                                 }
@@ -316,8 +326,13 @@ pub fn run() {
                             let new_enabled = state_clone.config.toggle_sitting_reminder();
                             state_clone.config.save(app);
 
-                            // 如果开启，启动活动监听器
+                            // 如果开启，检查权限并启动活动监听器
                             if new_enabled {
+                                // 检查辅助功能权限
+                                if !activity_monitor::check_accessibility_permission() {
+                                    // 没有权限，请求权限
+                                    activity_monitor::request_accessibility_permission();
+                                }
                                 state_clone.activity_monitor.start();
                             }
 
@@ -476,8 +491,8 @@ pub fn run() {
                             );
                             reminder.awaiting_standup = true;
                             reminder.reminder_sent_at = Some(Instant::now());
-                            // 重置活动监听器的时间戳
-                            state_for_manager.activity_monitor.reset_activity();
+                            // 开始监控键鼠活动（按需监控）
+                            state_for_manager.activity_monitor.start_monitoring();
                         }
                     }
                 }
@@ -596,8 +611,12 @@ pub fn run() {
             let state_sit = state.clone();
 
             std::thread::spawn(move || {
-                // 如果启用了智能久坐提醒，启动活动监听器
+                // 如果启用了智能久坐提醒，检查权限并启动活动监听线程（但不开始监控）
                 if state_sit.config.get_sitting_reminder_enabled() {
+                    if !activity_monitor::check_accessibility_permission() {
+                        activity_monitor::request_accessibility_permission();
+                    }
+                    // 只启动监听线程，不开始监控（按需监控）
                     state_sit.activity_monitor.start();
                 }
 
@@ -616,11 +635,13 @@ pub fn run() {
                                         // 用户站起来了，重置计时
                                         let mut m = state_sit.sitting_minutes.lock().unwrap();
                                         *m = 0;
-                                        println!("用户已休息，重置久坐计时");
+                                        println!("[久坐提醒] 用户已休息，重置久坐计时");
                                     } else {
                                         // 用户仍在活动，继续计时
-                                        println!("用户仍在活动，继续计时");
+                                        println!("[久坐提醒] 用户仍在活动，继续计时");
                                     }
+                                    // 停止监控键鼠活动
+                                    state_sit.activity_monitor.stop_monitoring();
                                     // 清除等待状态
                                     reminder.awaiting_standup = false;
                                     reminder.reminder_sent_at = None;
@@ -639,7 +660,7 @@ pub fn run() {
                     if let Some(tray) = handle_sit.tray_by_id("main") {
                         let show_time = state_sit.config.get_show_time();
                         if show_time {
-                            let _ = tray.set_title(Some(&format_title(minutes)));
+                            let _ = tray.set_title(Some(&format_title(minutes, Some(&state_sit.activity_monitor))));
                         }
                         let current_state = *state_sit.tray_state.lock().unwrap();
                         let cli_states_snapshot: Vec<CliStatus> = state_sit

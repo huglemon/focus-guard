@@ -32,9 +32,17 @@ fn find_cli_pid_by_cwd(cwd: &str) -> Option<u32> {
                     let lsof_str = String::from_utf8_lossy(&lsof.stdout);
                     // 查找 cwd 行
                     for line in lsof_str.lines() {
-                        if line.contains("cwd") && line.contains(cwd) {
-                            println!("找到匹配的 CLI 进程: {} (PID={})", cli_name, pid);
-                            return Some(pid);
+                        if line.contains("cwd") {
+                            // 提取 cwd 路径（lsof 输出的最后一列）
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 9 {
+                                let process_cwd = parts[8..].join(" ");
+                                // 精确匹配 CWD
+                                if process_cwd == cwd {
+                                    println!("找到精确匹配的 CLI 进程: {} (PID={}, CWD={})", cli_name, pid, process_cwd);
+                                    return Some(pid);
+                                }
+                            }
                         }
                     }
                 }
@@ -42,7 +50,7 @@ fn find_cli_pid_by_cwd(cwd: &str) -> Option<u32> {
         }
     }
 
-    println!("未找到匹配 CWD 的 CLI 进程");
+    println!("未找到精确匹配 CWD 的 CLI 进程");
     None
 }
 

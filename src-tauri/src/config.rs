@@ -173,15 +173,16 @@ impl ConfigManager {
         self.config.lock().unwrap().sitting_reminder_interval_minutes
     }
 
-    /// 循环切换提醒间隔：20 -> 30 -> 40 -> 50 -> 60 -> 20
+    /// 循环切换提醒间隔：1 -> 20 -> 30 -> 40 -> 50 -> 60 -> 1（1分钟用于测试）
     pub fn cycle_sitting_reminder_interval(&self) -> u32 {
         let mut config = self.config.lock().unwrap();
         config.sitting_reminder_interval_minutes = match config.sitting_reminder_interval_minutes {
+            1 => 20,
             20 => 30,
             30 => 40,
             40 => 50,
             50 => 60,
-            _ => 20,
+            _ => 1,  // 默认1分钟方便测试
         };
         config.sitting_reminder_interval_minutes
     }
