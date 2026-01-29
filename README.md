@@ -51,7 +51,10 @@ Focus Guard 是一款 macOS 菜单栏应用，专为使用 AI CLI 工具（如 C
 1. 前往 [Releases](https://github.com/huglemon/focus-guard/releases) 页面
 2. 下载最新版本的 `.dmg` 文件
 3. 打开 DMG，将应用拖入 Applications 文件夹
-4. 首次运行时，右键点击应用选择"打开"
+4. 首次打开应用时，由于没有 Apple 开发者签名，系统会提示"无法验证开发者"
+   - **右键点击**应用，选择「打开」
+   - 在弹出的对话框中点击「打开」
+   - 之后就可以正常使用了
 
 ## 使用方法
 

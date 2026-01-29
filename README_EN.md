@@ -51,7 +51,10 @@ Focus Guard is a macOS menu bar application designed for developers using AI CLI
 1. Go to [Releases](https://github.com/huglemon/focus-guard/releases) page
 2. Download the latest `.dmg` file
 3. Open the DMG and drag the app to Applications folder
-4. On first launch, right-click the app and select "Open"
+4. On first launch, macOS will show "Cannot verify developer" warning (the app is not signed with Apple Developer certificate)
+   - **Right-click** the app and select "Open"
+   - Click "Open" in the dialog
+   - The app will work normally after this
 
 ## Usage
 
