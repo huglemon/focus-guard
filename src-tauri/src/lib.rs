@@ -431,11 +431,29 @@ pub fn run() {
                                 let lang = state_for_update.config.get_language();
                                 let s = get_strings(lang);
 
+                                // 先发送检查中的通知
+                                let _ = notification::send_system_notification(&app_handle, s.app_name, s.checking_update, false);
+
                                 match updater::check_for_update(&app_handle).await {
                                     Ok(Some(version)) => {
-                                        // 有新版本，发送通知
+                                        // 有新版本，发送通知并开始下载
                                         let msg = format_update_available(lang, &version);
                                         let _ = notification::send_system_notification(&app_handle, s.app_name, &msg, false);
+
+                                        // 下载并安装
+                                        let _ = notification::send_system_notification(&app_handle, s.app_name, s.downloading, false);
+                                        match updater::download_and_install(&app_handle).await {
+                                            Ok(()) => {
+                                                // 安装成功，提示重启
+                                                let _ = notification::send_system_notification(&app_handle, s.app_name, s.install_restart, false);
+                                                // 重启应用
+                                                app_handle.restart();
+                                            }
+                                            Err(e) => {
+                                                println!("Update install error: {}", e);
+                                                let _ = notification::send_system_notification(&app_handle, s.app_name, s.update_error, false);
+                                            }
+                                        }
                                     }
                                     Ok(None) => {
                                         // 已是最新版本

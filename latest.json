@@ -1,11 +1,11 @@
 {
-  "version": "0.1.1",
-  "notes": "Focus Guard v0.1.1\n\n新功能：\n- 添加开机自动启动选项",
-  "pub_date": "2026-01-29T04:24:22Z",
+  "version": "0.1.2",
+  "notes": "Focus Guard v0.1.2\n\n修复：\n- 修复自动更新功能，现在会自动下载安装并重启",
+  "pub_date": "2026-01-29T04:31:10Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTL1dXZmxReDUyaVRrSitFWDFQM25iMk1MYXJBS2FrbG4rbDc4Tm1JU3FOaTI4LzlzZnZ6aUt2Y0VzMlNVYzBjeFFxU0hjalhZalgxZlg3VEFWM3BTRU0zRmE0aG5LVkEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjYwNjYyCWZpbGU6Rm9jdXMuR3VhcmRfMC4xLjFfYWFyY2g2NC5kbWcKWHk0SStHbWVpRGZGK1RZRHlqdDJSRnFUUWNpdHF1WFNORUpqK3kvYnFVMlZvbnRHaG9yQ2grZlFUendkUm80R0RNYU5iQjZPblhkU1IzNWkwWmErQnc9PQo=",
-      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.1/Focus.Guard_0.1.1_aarch64.dmg"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTL1dXZmxReDUyaVVPbXpVMHhCRyttTjYwRlEwNnNEcWtRR1VqUzdwNXVkbWJUd2pKK1o4MFh6L1V4bFlpcHNLTVlaaVpWWkxSYjFnNXN4clh3M2VEMVp0SG44ZFR4QUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjYxMDcwCWZpbGU6Rm9jdXMuR3VhcmRfMC4xLjJfYWFyY2g2NC5kbWcKdkNYMHZPOHhZRENTVDMxWkg2cHlLS2d1U0tRZXZTU1dFTDZXRWxvMkdiQ0YxZkpyWGhNL09rVGhsWDFqQks0NUtXc3VvaU5ETml0eDdtTlZYNWVkQ0E9PQo=",
+      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.2/Focus.Guard_0.1.2_aarch64.dmg"
     }
   }
 }
