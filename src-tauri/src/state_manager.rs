@@ -26,6 +26,7 @@ pub struct CliStatus {
     pub session_id: Option<String>,
     pub cwd: Option<String>,
     pub display_name: String, // 如 "Claude - my-project"
+    pub stop_received_at: Option<Instant>, // Stop 事件接收时间，用于延迟判断
 }
 
 impl CliStatus {
@@ -41,6 +42,7 @@ impl CliStatus {
             session_id: None,
             cwd: None,
             display_name,
+            stop_received_at: None,
         }
     }
 
@@ -55,6 +57,7 @@ impl CliStatus {
             session_id,
             cwd,
             display_name,
+            stop_received_at: None,
         }
     }
 
@@ -163,13 +166,41 @@ impl StateManager {
                             status.update_display_name();
                         }
 
+                        // 处理 Stop 事件的延迟逻辑
                         let new_state = match msg.event {
-                            CliEvent::SessionStart => CliState::Working,
-                            CliEvent::SessionEnd => CliState::Offline,
-                            CliEvent::Working => CliState::Working,
-                            CliEvent::Stop => CliState::WaitingInput,
-                            CliEvent::IdlePrompt => CliState::Idle,
-                            CliEvent::PermissionPrompt => CliState::WaitingInput,
+                            CliEvent::SessionStart => {
+                                status.stop_received_at = None;
+                                CliState::Working
+                            }
+                            CliEvent::SessionEnd => {
+                                status.stop_received_at = None;
+                                CliState::Offline
+                            }
+                            CliEvent::Working => {
+                                // 收到 Working 事件，清除 Stop 记录
+                                status.stop_received_at = None;
+                                CliState::Working
+                            }
+                            CliEvent::Stop => {
+                                // Stop 事件：记录时间，但保持 Working 状态
+                                // 延迟判断是否真的需要用户输入
+                                status.stop_received_at = Some(Instant::now());
+                                // 保持当前状态（如果是 Working 就保持 Working）
+                                if status.state == CliState::Offline {
+                                    CliState::Working
+                                } else {
+                                    status.state
+                                }
+                            }
+                            CliEvent::IdlePrompt => {
+                                status.stop_received_at = None;
+                                CliState::Idle
+                            }
+                            CliEvent::PermissionPrompt => {
+                                // 权限提示需要立即响应
+                                status.stop_received_at = None;
+                                CliState::WaitingInput
+                            }
                         };
                         status.state = new_state;
 
@@ -198,27 +229,43 @@ impl StateManager {
                         });
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                        // 超时检查：将长时间 WaitingInput 的状态转为 Idle
+                        // 超时检查
                         let mut states_guard = states.lock().unwrap();
+                        let mut state_updated = false;
+
                         for status in states_guard.values_mut() {
+                            // 检查 Stop 延迟：如果收到 Stop 超过 3 秒没有新事件，转为 WaitingInput
+                            if let Some(stop_time) = status.stop_received_at {
+                                if stop_time.elapsed() > Duration::from_secs(3) {
+                                    status.state = CliState::WaitingInput;
+                                    status.stop_received_at = None;
+                                    state_updated = true;
+                                }
+                            }
+
+                            // 将长时间 WaitingInput 的状态转为 Idle
                             if status.state == CliState::WaitingInput
                                 && status.last_update.elapsed() > timeout * 6
                             {
                                 status.state = CliState::Idle;
+                                state_updated = true;
                             }
                         }
                         drop(states_guard);
 
                         // 检查聚合状态是否变化
                         let aggregate_state = Self::calculate_aggregate_state(&states);
-                        if aggregate_state != last_aggregate_state {
-                            last_aggregate_state = aggregate_state;
+                        if aggregate_state != last_aggregate_state || state_updated {
+                            let changed = aggregate_state != last_aggregate_state;
+                            if changed {
+                                last_aggregate_state = aggregate_state;
+                            }
                             on_state_change(StateChangeEvent {
                                 state: aggregate_state,
                                 pid: None,
                                 cwd: None,
                                 cli_name: String::new(),
-                                state_changed: true,
+                                state_changed: changed,
                             });
                         }
                     }
