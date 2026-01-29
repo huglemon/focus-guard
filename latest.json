@@ -1,11 +1,11 @@
 {
-  "version": "0.1.2",
-  "notes": "Focus Guard v0.1.2\n\n修复：\n- 修复自动更新功能，现在会自动下载安装并重启",
-  "pub_date": "2026-01-29T04:31:10Z",
+  "version": "0.1.3",
+  "notes": "Focus Guard v0.1.3\n\n修复：\n- 优化 Stop 事件处理，延迟 3 秒后才变红，避免频繁闪烁\n- 修复键鼠监听无效导致久坐计时误重置的问题\n- 添加调试日志便于排查权限问题",
+  "pub_date": "2026-01-29T05:48:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTL1dXZmxReDUyaVVPbXpVMHhCRyttTjYwRlEwNnNEcWtRR1VqUzdwNXVkbWJUd2pKK1o4MFh6L1V4bFlpcHNLTVlaaVpWWkxSYjFnNXN4clh3M2VEMVp0SG44ZFR4QUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjYxMDcwCWZpbGU6Rm9jdXMuR3VhcmRfMC4xLjJfYWFyY2g2NC5kbWcKdkNYMHZPOHhZRENTVDMxWkg2cHlLS2d1U0tRZXZTU1dFTDZXRWxvMkdiQ0YxZkpyWGhNL09rVGhsWDFqQks0NUtXc3VvaU5ETml0eDdtTlZYNWVkQ0E9PQo=",
-      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.2/Focus.Guard_0.1.2_aarch64.dmg"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSFBjbXY1Tzk0SWVWRERVb0xiaTFJSGZwa1JMNUh6WUpOaTlna044SkxHemxuZ1R0L2VrdlJ4QVZQaXZpREFhMURxYisxY2RDWHhtSzhsUWVjYWpQRk9uK1hHL2VRMGdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5NjY1NjUyCWZpbGU6Rm9jdXMgR3VhcmRfMC4xLjNfYWFyY2g2NC5kbWcKYkNSWDkxcWtYL1VLYlVqT0pGZTN3VDVMMkMvNG9nZ0dZVmNUQ0pYOHVkd083UWtQbUhWR2s1cTVNZXNZUEd0ZEtFbUlWMExBbDhocGpEN0RyNGVvREE9PQo=",
+      "url": "https://github.com/huglemon/focus-guard/releases/download/v0.1.3/Focus.Guard_0.1.3_aarch64.dmg"
     }
   }
 }

@@ -33,7 +33,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg5NzYxRTQzRTU2NzU5QkYKUldTL1dXZmxReDUyaVNqUHBkRk9XQ3k0NlcwZ25NZWFkU1diU1RoYjV0UVM3SCs3QmhNeXdXSUsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxNzhFRkU0QUZDOTNEQzcKUldUSFBjbXY1Tzk0SVpzZ1RtV3V0RTdraW16dVJLQ3lTOFFIZHgzZlZaNVJCNGkrZEhSc0tmOFoK",
       "endpoints": [
         "https://github.com/huglemon/focus-guard/releases/latest/download/latest.json"
       ]
